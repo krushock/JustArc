@@ -1,0 +1,133 @@
+import AppKit
+
+/// Builds the menu bar in code, mirroring WinRAR's File / Commands split
+/// while keeping the macOS-standard App, Edit, Window and Help menus.
+enum MainMenuBuilder {
+    static func build() -> NSMenu {
+        let mainMenu = NSMenu()
+        mainMenu.addItem(appMenuItem())
+        mainMenu.addItem(fileMenuItem())
+        mainMenu.addItem(editMenuItem())
+        mainMenu.addItem(commandsMenuItem())
+        mainMenu.addItem(viewMenuItem())
+        mainMenu.addItem(windowMenuItem())
+        mainMenu.addItem(helpMenuItem())
+        return mainMenu
+    }
+
+    private static func submenu(_ title: String, _ build: (NSMenu) -> Void) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: title)
+        build(menu)
+        item.submenu = menu
+        return item
+    }
+
+    @discardableResult
+    private static func add(_ menu: NSMenu,
+                            _ title: String,
+                            _ action: Selector?,
+                            _ key: String = "",
+                            modifiers: NSEvent.ModifierFlags = .command,
+                            target: AnyObject? = nil) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        item.target = target
+        menu.addItem(item)
+        return item
+    }
+
+    private static func appMenuItem() -> NSMenuItem {
+        submenu("JustArc") { menu in
+            add(menu, "About JustArc", #selector(AppDelegate.showAbout(_:)))
+            menu.addItem(.separator())
+            add(menu, "Settings…", #selector(AppDelegate.showPreferences(_:)), ",")
+            menu.addItem(.separator())
+            add(menu, "Hide JustArc", #selector(NSApplication.hide(_:)), "h")
+            let hideOthers = add(menu, "Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h")
+            hideOthers.keyEquivalentModifierMask = [.command, .option]
+            add(menu, "Show All", #selector(NSApplication.unhideAllApplications(_:)))
+            menu.addItem(.separator())
+            add(menu, "Quit JustArc", #selector(NSApplication.terminate(_:)), "q")
+        }
+    }
+
+    private static func fileMenuItem() -> NSMenuItem {
+        submenu("File") { menu in
+            add(menu, "New Archive", #selector(AppDelegate.newArchiveWindow(_:)), "n")
+            add(menu, "Open…", #selector(AppDelegate.openDocument(_:)), "o")
+            menu.addItem(.separator())
+            add(menu, "Close", #selector(NSWindow.performClose(_:)), "w")
+            add(menu, "Save", #selector(ArchiveBrowserViewController.saveArchive(_:)), "s")
+            add(menu, "Save As…", #selector(ArchiveBrowserViewController.saveArchiveAs(_:)), "S",
+                modifiers: [.command, .shift])
+            menu.addItem(.separator())
+            add(menu, "Reveal Archive in Finder", #selector(ArchiveBrowserViewController.revealArchiveInFinder(_:)), "R",
+                modifiers: [.command, .shift])
+        }
+    }
+
+    private static func editMenuItem() -> NSMenuItem {
+        submenu("Edit") { menu in
+            add(menu, "Select All", #selector(NSResponder.selectAll(_:)), "a")
+            add(menu, "Invert Selection", #selector(ArchiveBrowserViewController.invertSelection(_:)), "i",
+                modifiers: [.command, .option])
+            menu.addItem(.separator())
+            add(menu, "Find…", #selector(ArchiveBrowserViewController.focusFilterField(_:)), "f")
+        }
+    }
+
+    private static func commandsMenuItem() -> NSMenuItem {
+        submenu("Commands") { menu in
+            add(menu, "Add Files…", #selector(ArchiveBrowserViewController.addFiles(_:)), "A",
+                modifiers: [.command, .shift])
+            menu.addItem(.separator())
+            add(menu, "Extract Selected…", #selector(ArchiveBrowserViewController.extractSelected(_:)), "e")
+            add(menu, "Extract All…", #selector(ArchiveBrowserViewController.extractAll(_:)), "E",
+                modifiers: [.command, .shift])
+            menu.addItem(.separator())
+            add(menu, "Open Selected File", #selector(ArchiveBrowserViewController.openSelectedFile(_:)), "\r",
+                modifiers: [])
+            add(menu, "Quick Look", #selector(ArchiveBrowserViewController.toggleQuickLook(_:)), " ",
+                modifiers: [])
+            menu.addItem(.separator())
+            add(menu, "Delete", #selector(ArchiveBrowserViewController.deleteSelected(_:)), "\u{8}",
+                modifiers: [])
+            add(menu, "Rename…", #selector(ArchiveBrowserViewController.renameSelected(_:)), "r")
+            menu.addItem(.separator())
+            add(menu, "Test Archive", #selector(ArchiveBrowserViewController.testArchive(_:)), "t")
+            add(menu, "Set Password…", #selector(ArchiveBrowserViewController.setPassword(_:)), "k")
+            add(menu, "Archive Information", #selector(ArchiveBrowserViewController.showArchiveInfo(_:)), "i")
+        }
+    }
+
+    private static func viewMenuItem() -> NSMenuItem {
+        submenu("View") { menu in
+            add(menu, "Enclosing Folder", #selector(ArchiveBrowserViewController.goUp(_:)), String(UnicodeScalar(NSUpArrowFunctionKey)!))
+            add(menu, "Back", #selector(ArchiveBrowserViewController.goBack(_:)), "[")
+            add(menu, "Forward", #selector(ArchiveBrowserViewController.goForward(_:)), "]")
+            menu.addItem(.separator())
+            add(menu, "Show Folder Tree", #selector(ArchiveBrowserViewController.toggleFolderTree(_:)), "t",
+                modifiers: [.command, .option])
+            add(menu, "Reload", #selector(ArchiveBrowserViewController.reloadArchive(_:)), "r",
+                modifiers: [.command, .option])
+        }
+    }
+
+    private static func windowMenuItem() -> NSMenuItem {
+        let item = submenu("Window") { menu in
+            add(menu, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
+            add(menu, "Zoom", #selector(NSWindow.performZoom(_:)))
+            menu.addItem(.separator())
+            add(menu, "Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))
+        }
+        NSApp.windowsMenu = item.submenu
+        return item
+    }
+
+    private static func helpMenuItem() -> NSMenuItem {
+        submenu("Help") { menu in
+            add(menu, "Supported Formats", #selector(AppDelegate.showAbout(_:)))
+        }
+    }
+}
