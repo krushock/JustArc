@@ -35,6 +35,14 @@ final class QuickExtractCoordinator {
         let engine = EngineFactory.engine(for: archive)
         defer { engine.release(archive: archive) }
 
+        // Step 0: the archive may be a cloud placeholder that is not on disk yet.
+        do {
+            try await downloadIfNeeded(archive)
+        } catch {
+            present(error: error, archive: archive)
+            return
+        }
+
         // Step 1: read the table of contents, asking for a password if the archive needs one.
         var password: String? = KeychainStore.password(for: archive)
         var listing: ArchiveListing
@@ -162,6 +170,23 @@ final class QuickExtractCoordinator {
 
     // MARK: - Helpers
 
+    /// Shows a panel while a cloud provider fetches the archive, since that can be slow.
+    private func downloadIfNeeded(_ archive: URL) async throws {
+        guard CloudFile.status(of: archive).needsDownload else { return }
+
+        let cancellation = CancellationToken()
+        let panel = ProgressWindowController(
+            title: L("Downloading %@", archive.lastPathComponent),
+            cancellation: cancellation)
+        panel.showWindow(nil)
+        panel.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        defer { panel.finish() }
+
+        try await CloudFile.materialize(archive, cancellation: cancellation, progress: nil)
+        if cancellation.isCancelled { throw ArchiveError.cancelled }
+    }
+
     private func resolveDestinationParent(for archive: URL) -> URL? {
         if let folder = Preferences.destinationFolder(for: archive) { return folder }
         let panel = NSOpenPanel()
@@ -190,6 +215,7 @@ final class QuickExtractCoordinator {
     }
 
     private func present(error: Error, archive: URL) {
+        Diagnostics.log("error shown for \(archive.lastPathComponent): \(error.localizedDescription)")
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = L("JustArc could not extract %@.", archive.lastPathComponent)

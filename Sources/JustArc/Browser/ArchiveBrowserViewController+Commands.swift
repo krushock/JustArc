@@ -40,6 +40,8 @@ extension ArchiveBrowserViewController {
                                              password: session.password,
                                              excludeMacMetadata: Preferences.excludeMacMetadata)
             let done = await runOperation(title: L("Adding to %@", session.displayName)) { cancellation, progress in
+                // Files dragged in from a cloud folder have to be fetched first.
+                try await CloudFile.materializeAll(items, cancellation: cancellation, progress: progress)
                 try await self.engine.add(items: items, to: archiveURL, options: options,
                                           cancellation: cancellation, progress: progress)
             }
@@ -439,6 +441,7 @@ extension ArchiveBrowserViewController {
     }
 
     func present(_ error: Error) {
+        Diagnostics.log("error shown: \(error.localizedDescription)")
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = L("JustArc could not complete that command.")

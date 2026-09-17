@@ -211,7 +211,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         var attempt = 0
         while true {
             do {
-                try await session.load()
+                try await loadWithDownloadPanel()
                 reloadList()
                 refreshChrome()
                 return
@@ -234,6 +234,28 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
                 return
             }
         }
+    }
+
+    /// Loading can start with a download when the archive lives in a cloud folder,
+    /// so that wait gets the same progress panel as any other long operation.
+    private func loadWithDownloadPanel() async throws {
+        guard let url = session.archiveURL, CloudFile.status(of: url).needsDownload else {
+            try await session.load()
+            return
+        }
+        let cancellation = CancellationToken()
+        let panel = ProgressWindowController(title: L("Downloading %@", url.lastPathComponent),
+                                             cancellation: cancellation)
+        if let window = view.window {
+            window.beginSheet(panel.window!, completionHandler: nil)
+        } else {
+            panel.showWindow(nil)
+        }
+        defer {
+            if let window = view.window, let sheet = panel.window { window.endSheet(sheet) }
+            panel.finish()
+        }
+        try await session.load(cancellation: cancellation)
     }
 
     func reloadFromSession() {

@@ -5,8 +5,22 @@ public final class CancellationToken: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     private var cancelled = false
+    private var handlers: [@Sendable () -> Void] = []
 
     public init() {}
+
+    /// Registers work to do on cancellation, for waits that are not a subprocess.
+    /// Fires immediately when cancellation already happened.
+    public func onCancel(_ handler: @escaping @Sendable () -> Void) {
+        lock.lock()
+        if cancelled {
+            lock.unlock()
+            handler()
+            return
+        }
+        handlers.append(handler)
+        lock.unlock()
+    }
 
     public var isCancelled: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -25,8 +39,11 @@ public final class CancellationToken: @unchecked Sendable {
         lock.lock()
         cancelled = true
         let process = self.process
+        let pending = handlers
+        handlers.removeAll()
         lock.unlock()
         process?.terminate()
+        for handler in pending { handler() }
     }
 }
 

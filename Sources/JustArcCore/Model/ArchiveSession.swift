@@ -68,11 +68,14 @@ public final class ArchiveSession {
 
     // MARK: - Loading
 
-    public func load() async throws {
+    public func load(cancellation: CancellationToken? = nil,
+                     progress: ProgressHandler? = nil) async throws {
         guard let archiveURL else {
             rebuild()
             return
         }
+        // A file from iCloud or Google Drive may still be a placeholder.
+        try await CloudFile.materialize(archiveURL, cancellation: cancellation, progress: progress)
         let loaded = try await engine.list(archive: archiveURL,
                                            password: password,
                                            encodingCodePage: encodingCodePage)
@@ -198,6 +201,8 @@ public final class ArchiveSession {
             try await engine.delete(entries: victims, from: destination, password: password)
         }
         if !stagedRoots.isEmpty {
+            try await CloudFile.materializeAll(stagedRoots, cancellation: cancellation,
+                                               progress: progress)
             try await engine.add(items: stagedRoots, to: destination, options: options,
                                  cancellation: cancellation, progress: progress)
         }
@@ -230,6 +235,8 @@ public final class ArchiveSession {
             }
         }
 
+        // Staged files may come from a cloud folder and still be placeholders.
+        try await CloudFile.materializeAll(stagedRoots, cancellation: cancellation, progress: progress)
         roots.append(contentsOf: stagedRoots)
         guard !roots.isEmpty else {
             throw ArchiveError.ioFailure(L("There is nothing to save. Add files to the archive first."))

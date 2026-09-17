@@ -11,6 +11,8 @@ public enum ArchiveError: LocalizedError, Sendable, Equatable {
     case unsafeEntry(String)
     case ioFailure(String)
     case externalToolMissing(name: String, hint: String)
+    /// A cloud provider holds the file and has not put it on disk yet.
+    case notDownloaded(String)
 
     public var errorDescription: String? {
         switch self {
@@ -34,6 +36,8 @@ public enum ArchiveError: LocalizedError, Sendable, Equatable {
             return m
         case .externalToolMissing(let name, let hint):
             return L("%@ is not installed. %@", name, hint)
+        case .notDownloaded(let message):
+            return message
         }
     }
 
@@ -54,6 +58,8 @@ public enum ArchiveError: LocalizedError, Sendable, Equatable {
             return codeA == codeB && messageA == messageB
         case let (.externalToolMissing(nameA, hintA), .externalToolMissing(nameB, hintB)):
             return nameA == nameB && hintA == hintB
+        case let (.notDownloaded(a), .notDownloaded(b)):
+            return a == b
         default:
             return false
         }

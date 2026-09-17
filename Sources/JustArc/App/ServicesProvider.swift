@@ -92,6 +92,10 @@ final class ServicesProvider: NSObject {
         NSApp.activate(ignoringOtherApps: true)
 
         do {
+            try await CloudFile.materializeAll(items, cancellation: cancellation,
+                                               progress: { progress in
+                                                   Task { @MainActor in panel.update(progress) }
+                                               })
             let writer = EngineFactory.engine(for: destination)
             try await writer.create(archive: destination, items: items, options: options,
                                     cancellation: cancellation,

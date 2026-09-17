@@ -69,6 +69,10 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ## Other things it does
 
+- **Cloud files.** Archives in iCloud Drive, Google Drive or Dropbox are often
+  placeholders with no data on disk. JustArc asks the provider to fetch one before
+  reading it, shows a cancellable download panel, and names the provider if it fails.
+
 - **Finder Services.** Compress, compress choosing a format, extract, and open, all from
   the Finder context menu.
 - **Edited files go back in.** Open a file out of an archive, edit it in another app, and
@@ -88,6 +92,15 @@ JUSTARC_VERBOSE=1 ./build/JustArc.app/Contents/MacOS/JustArc ~/Downloads/thing.d
 ```
 
 Engine logging also goes to the unified log under the `com.justarc.JustArc` subsystem.
+
+After changing any message shown to a person, regenerate the translation files:
+
+```bash
+./Scripts/update-strings.py
+```
+
+It preserves existing translations, lists anything new that needs one, and refuses to
+run if a message was assembled with `+`, because such a key cannot be extracted.
 
 ## Releasing
 

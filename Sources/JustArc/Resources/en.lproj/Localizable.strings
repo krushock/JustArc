@@ -1,5 +1,6 @@
-/* JustArc — English.
-   The English text is the key, so anything untranslated still reads correctly. */
+/* JustArc — en.
+   The English text is the key, so anything untranslated still reads correctly.
+   Regenerate with Scripts/update-strings.py after changing any message. */
 
 " — Edited" = " — Edited";
 " — packed %@" = " — packed %@";
@@ -10,6 +11,7 @@
 "%@ is not an executable." = "%@ is not an executable.";
 "%@ is not installed. %@" = "%@ is not installed. %@";
 "%@ is protected. Enter its password to continue." = "%@ is protected. Enter its password to continue.";
+"%@ is stored in %@ and has not been downloaded to this Mac. Open it in Finder to download it, and check that %@ is running." = "%@ is stored in %@ and has not been downloaded to this Mac. Open it in Finder to download it, and check that %@ is running.";
 "%@ was edited outside JustArc." = "%@ was edited outside JustArc.";
 "%@ was not found after extraction." = "%@ was not found after extraction.";
 "%d files opened from this archive were edited outside JustArc." = "%d files opened from this archive were edited outside JustArc.";
@@ -30,6 +32,7 @@
 "Cancel" = "Cancel";
 "Cancelling…" = "Cancelling…";
 "Central European (Windows 1250)" = "Central European (Windows 1250)";
+"Check for Updates…" = "Check for Updates…";
 "Check the password for %@ and try again." = "Check the password for %@ and try again.";
 "Checking…" = "Checking…";
 "Choose a name and format for the archive." = "Choose a name and format for the archive.";
@@ -56,6 +59,7 @@
 "Do not split" = "Do not split";
 "Document" = "Document";
 "Download RAR…" = "Download RAR…";
+"Downloading %@" = "Downloading %@";
 "Downloading from rarlab.com…" = "Downloading from rarlab.com…";
 "Downloading from rarlab.com… %@" = "Downloading from rarlab.com… %@";
 "Downloads" = "Downloads";
@@ -212,3 +216,4 @@
 "Zoom" = "Zoom";
 "hdiutil failed." = "hdiutil failed.";
 "installed by JustArc" = "installed by JustArc";
+"the cloud" = "the cloud";
