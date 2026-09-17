@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var browserControllers: [ArchiveWindowController] = []
     private var didReceiveOpenRequest = false
     private var preferencesController: PreferencesWindowController?
+    private var servicesProvider: ServicesProvider?
 
     // MARK: - Lifecycle
 
@@ -16,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quickExtract.onAllJobsFinished = { [weak self] in
             self?.terminateIfNothingLeftToShow()
         }
+        registerServices()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -99,6 +101,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         """
         alert.runModal()
         NSApp.terminate(nil)
+    }
+
+    /// Publishes the Finder Services menu entries declared in Info.plist.
+    private func registerServices() {
+        let provider = ServicesProvider(
+            quickExtract: quickExtract,
+            openInBrowser: { [weak self] url in self?.openInBrowser(url) },
+            stageIntoNewWindow: { [weak self] items in
+                guard let self else { return }
+                let controller = self.makeBrowserWindow(for: nil)
+                controller.session.stage(items: items)
+                controller.reloadFromSession()
+                NSApp.activate(ignoringOtherApps: true)
+            })
+        servicesProvider = provider
+        NSApp.servicesProvider = provider
+        NSUpdateDynamicServices()
     }
 
     // MARK: - Window management

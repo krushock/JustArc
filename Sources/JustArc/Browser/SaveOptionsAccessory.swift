@@ -10,6 +10,7 @@ final class SaveOptionsAccessory: NSView {
     private let encryptNamesBox = NSButton(checkboxWithTitle: "Encrypt file names", target: nil, action: nil)
     private let excludeMetadataBox = NSButton(checkboxWithTitle: "Skip .DS_Store and resource forks",
                                               target: nil, action: nil)
+    private let volumeCombo = NSComboBox()
 
     private let levels: [(String, Int)] = [
         ("Store (no compression)", 0),
@@ -39,7 +40,7 @@ final class SaveOptionsAccessory: NSView {
     }
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 420, height: 150))
+        super.init(frame: NSRect(x: 0, y: 0, width: 440, height: 180))
         build()
     }
 
@@ -62,11 +63,19 @@ final class SaveOptionsAccessory: NSView {
         passwordField.placeholderString = "Optional password"
         excludeMetadataBox.state = Preferences.excludeMacMetadata ? .on : .off
 
+        // Editable so a size the presets do not cover can simply be typed.
+        for preset in VolumeSize.presets { volumeCombo.addItem(withObjectValue: preset.title) }
+        volumeCombo.selectItem(at: 0)
+        volumeCombo.completes = true
+        volumeCombo.placeholderString = "Do not split"
+        volumeCombo.toolTip = "Split the archive into volumes of this size, for example 100m or 1.5g."
+
         let grid = NSGridView(views: [
             [label("Format:"), formatPopUp],
             [label("Compression:"), levelPopUp],
             [label("Password:"), passwordField],
             [NSView(), encryptNamesBox],
+            [label("Split into:"), volumeCombo],
             [NSView(), excludeMetadataBox],
         ])
         grid.rowSpacing = 8
@@ -100,17 +109,33 @@ final class SaveOptionsAccessory: NSView {
         levelPopUp.isEnabled = format.supportsCompressionLevel
         passwordField.isEnabled = format.supportsPassword
         encryptNamesBox.isEnabled = format.supportsEncryptedHeaders
+        volumeCombo.isEnabled = format.supportsSplitVolumes
         if !format.supportsPassword { passwordField.stringValue = "" }
         if !format.supportsEncryptedHeaders { encryptNamesBox.state = .off }
+        if !format.supportsSplitVolumes { volumeCombo.stringValue = "" }
     }
 
     func options() -> CompressionOptions {
         let level = levels[max(levelPopUp.indexOfSelectedItem, 0)].1
         let password = passwordField.stringValue.isEmpty ? nil : passwordField.stringValue
-        return CompressionOptions(formatKey: selectedFormat.key,
+        let format = selectedFormat
+        let volume = format.supportsSplitVolumes
+            ? VolumeSize.normalize(volumeCombo.stringValue)
+            : nil
+        return CompressionOptions(formatKey: format.key,
                                   level: level,
                                   password: password,
                                   encryptFileNames: encryptNamesBox.state == .on,
+                                  volumeSize: volume,
                                   excludeMacMetadata: excludeMetadataBox.state == .on)
+    }
+
+    /// True when the text in the split field is neither empty nor a size we understand,
+    /// so the Save panel can warn instead of silently ignoring it.
+    var hasUnparseableVolumeSize: Bool {
+        let text = volumeCombo.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty, selectedFormat.supportsSplitVolumes else { return false }
+        if text.caseInsensitiveCompare(VolumeSize.presets[0].title) == .orderedSame { return false }
+        return VolumeSize.normalize(text) == nil
     }
 }

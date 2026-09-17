@@ -103,7 +103,47 @@ extension ArchiveBrowserViewController {
         }
         Task {
             guard let url = await materialize(node: node) else { return }
+            // Remember what it looked like, so an edit in another app can be written back.
+            if session.archiveURL != nil, session.canModifyContents, session.stagedSource(for: node.path) == nil {
+                editedFiles.track(localURL: url, entryPath: node.path)
+            }
             NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Asks whether edits made in another app should go back into the archive.
+    func offerToUpdate(_ changed: [EditedFileWatcher.Tracked]) {
+        guard let archiveURL = session.archiveURL, session.canModifyContents else { return }
+
+        let alert = NSAlert()
+        alert.messageText = changed.count == 1
+            ? "\((changed[0].entryPath as NSString).lastPathComponent) was edited outside JustArc."
+            : "\(changed.count) files opened from this archive were edited outside JustArc."
+        alert.informativeText = changed.count == 1
+            ? "Update \(session.displayName) with the edited file?"
+            : "Update \(session.displayName) with the edited files?\n\n"
+              + changed.map(\.entryPath).joined(separator: "\n")
+        alert.addButton(withTitle: changed.count == 1 ? "Update Archive" : "Update Archive")
+        alert.addButton(withTitle: "Keep Unchanged")
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            for entry in changed { editedFiles.acknowledge(entryPath: entry.entryPath) }
+            return
+        }
+
+        let options = currentCompressionOptions()
+        Task {
+            let done = await runOperation(title: "Updating \(session.displayName)") { cancellation, progress in
+                for entry in changed {
+                    try await self.engine.update(fileAt: entry.localURL,
+                                                 entryPath: entry.entryPath,
+                                                 in: archiveURL,
+                                                 options: options,
+                                                 cancellation: cancellation,
+                                                 progress: progress)
+                }
+            }
+            for entry in changed { editedFiles.acknowledge(entryPath: entry.entryPath) }
+            if done != nil { loadArchive() }
         }
     }
 
@@ -179,6 +219,7 @@ extension ArchiveBrowserViewController {
         }
 
         let entries = nodes.flatMap { $0.descendantEntries() }
+        for entry in entries { editedFiles.stopTracking(entryPath: entry.path) }
         Task {
             let done = await runOperation(title: "Deleting from \(session.displayName)") { _, _ in
                 try await self.engine.delete(entries: entries, from: archiveURL,
@@ -210,6 +251,7 @@ extension ArchiveBrowserViewController {
         guard !newName.isEmpty, newName != node.name, !newName.contains("/") else { return }
         let newPath = ArchivePath.join(entry.parentPath, newName)
 
+        editedFiles.stopTracking(entryPath: entry.path)
         Task {
             let done = await runOperation(title: "Renaming in \(session.displayName)") { _, _ in
                 try await self.engine.rename(entry: entry, to: newPath,
@@ -307,6 +349,15 @@ extension ArchiveBrowserViewController {
         }
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        if accessory.hasUnparseableVolumeSize {
+            let warning = NSAlert()
+            warning.alertStyle = .warning
+            warning.messageText = "That split size was not understood."
+            warning.informativeText = "Use a size such as 100m, 700m or 1.5g. Save without splitting?"
+            warning.addButton(withTitle: "Save Without Splitting")
+            warning.addButton(withTitle: "Cancel")
+            guard warning.runModal() == .alertFirstButtonReturn else { return }
+        }
         performSave(to: url, options: accessory.options())
     }
 

@@ -5,7 +5,7 @@ import JustArcCore
 
 /// The WinRAR-style archive window: command strip, address row, file list, status bar.
 @MainActor
-final class ArchiveBrowserViewController: NSViewController {
+final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation {
     let session: ArchiveSession
     /// Follows the session, so a disk image window drives hdiutil.
     var engine: ArchiveEngine { session.engine }
@@ -24,6 +24,9 @@ final class ArchiveBrowserViewController: NSViewController {
     private var historyIndex = 0
     private var filterText = ""
     private var previewItems: [URL] = []
+
+    /// Watches files opened out of the archive so edits can be written back.
+    let editedFiles = EditedFileWatcher()
     var currentPreviewItems: [URL] { previewItems }
 
     /// Per-window scratch space for files opened or previewed out of the archive.
@@ -185,6 +188,10 @@ final class ArchiveBrowserViewController: NSViewController {
         listSource.promiseProvider = { [weak self] entry in self?.makePromise(for: entry) }
 
         folderTree.onSelect = { [weak self] path in self?.navigate(to: path) }
+
+        editedFiles.onChangesDetected = { [weak self] changed in
+            self?.offerToUpdate(changed)
+        }
     }
 
     // MARK: - Loading
@@ -356,6 +363,27 @@ final class ArchiveBrowserViewController: NSViewController {
 
     @objc func reloadArchive(_ sender: Any?) {
         loadArchive()
+    }
+
+    // MARK: - Filename encoding
+
+    @objc func setTextEncoding(_ sender: NSMenuItem) {
+        let codePage = sender.tag == 0 ? nil : sender.tag
+        guard session.encodingCodePage != codePage else { return }
+        session.encodingCodePage = codePage
+        loadArchive()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(setTextEncoding(_:)) {
+            let current = session.encodingCodePage ?? 0
+            menuItem.state = menuItem.tag == current ? .on : .off
+            return ArchiveTextEncoding.isOverridable(session.format) && !session.isUntitled
+        }
+        if menuItem.action == #selector(toggleFolderTree(_:)) {
+            menuItem.state = Preferences.showFolderTree ? .on : .off
+        }
+        return true
     }
 
     @objc func revealArchiveInFinder(_ sender: Any?) {

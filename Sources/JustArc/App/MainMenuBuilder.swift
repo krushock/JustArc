@@ -1,4 +1,5 @@
 import AppKit
+import JustArcCore
 
 /// Builds the menu bar in code, mirroring WinRAR's File / Commands split
 /// while keeping the macOS-standard App, Edit, Window and Help menus.
@@ -109,8 +110,22 @@ enum MainMenuBuilder {
             menu.addItem(.separator())
             add(menu, "Show Folder Tree", #selector(ArchiveBrowserViewController.toggleFolderTree(_:)), "t",
                 modifiers: [.command, .option])
+            menu.addItem(textEncodingMenuItem())
             add(menu, "Reload", #selector(ArchiveBrowserViewController.reloadArchive(_:)), "r",
                 modifiers: [.command, .option])
+        }
+    }
+
+    /// Filename encodings for zip archives written on systems that predate UTF-8.
+    /// Each item carries its code page in `tag`, with 0 standing for automatic.
+    private static func textEncodingMenuItem() -> NSMenuItem {
+        submenu("Filename Encoding") { menu in
+            for encoding in ArchiveTextEncoding.all {
+                let item = add(menu, encoding.title,
+                               #selector(ArchiveBrowserViewController.setTextEncoding(_:)))
+                item.tag = encoding.codePage ?? 0
+                if encoding.codePage == nil { menu.addItem(.separator()) }
+            }
         }
     }
 

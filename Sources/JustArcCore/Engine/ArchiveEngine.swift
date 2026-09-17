@@ -102,6 +102,14 @@ public protocol ArchiveEngine: Sendable {
 
     func rename(entry: ArchiveEntry, to newPath: String, in archive: URL, password: String?) async throws
 
+    /// Writes an edited copy of one entry back into the archive, keeping its path.
+    func update(fileAt localURL: URL,
+                entryPath: String,
+                in archive: URL,
+                options: CompressionOptions,
+                cancellation: CancellationToken?,
+                progress: ProgressHandler?) async throws
+
     /// Frees anything the engine is holding for this archive, such as a mounted
     /// disk image. Safe to call on an archive the engine never opened.
     func release(archive: URL)
@@ -149,6 +157,12 @@ public extension ArchiveEngine {
         throw ArchiveError.notWritable(FormatRegistry.format(for: archive)?.displayName ?? "this format")
     }
 
+    func update(fileAt localURL: URL, entryPath: String, in archive: URL,
+                options: CompressionOptions, cancellation: CancellationToken? = nil,
+                progress: ProgressHandler? = nil) async throws {
+        throw ArchiveError.notWritable(FormatRegistry.format(for: archive)?.displayName ?? "this format")
+    }
+
     func release(archive: URL) {}
 }
 
@@ -162,7 +176,9 @@ public enum EngineFactory {
         switch format?.engine {
         case .diskImage:
             return DMGEngine()
-        case .externalRAR, .sevenZip, .none:
+        case .externalRAR:
+            return RarEngine()
+        case .sevenZip, .none:
             return SevenZipEngine()
         }
     }

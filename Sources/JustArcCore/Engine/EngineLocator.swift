@@ -27,12 +27,27 @@ public enum EngineLocator {
     public static let bsdTar = URL(fileURLWithPath: "/usr/bin/bsdtar")
     public static let hdiutil = URL(fileURLWithPath: "/usr/bin/hdiutil")
 
-    /// RAR writing needs RARLAB's own tool, which cannot be redistributed.
+    /// Where JustArc keeps things it downloads. The app bundle is not used, because
+    /// writing into it breaks the code signature and it may sit on a read-only volume.
+    public static var applicationSupportDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return base.appendingPathComponent("JustArc", isDirectory: true)
+    }
+
+    /// The folder a downloaded copy of RARLAB's tools is installed into.
+    public static var managedRARDirectory: URL {
+        applicationSupportDirectory.appendingPathComponent("rar", isDirectory: true)
+    }
+
+    /// RAR writing needs RARLAB's own tool, which cannot be redistributed with the app.
+    /// It is found where the user pointed us, where JustArc installed it, or on PATH.
     public static var externalRAR: URL? {
         var candidates: [URL] = []
-        if let override = UserDefaults.standard.string(forKey: "RARToolPath") {
+        if let override = UserDefaults.standard.string(forKey: "RARToolPath"), !override.isEmpty {
             candidates.append(URL(fileURLWithPath: override))
         }
+        candidates.append(managedRARDirectory.appendingPathComponent("rar"))
         candidates.append(URL(fileURLWithPath: "/opt/homebrew/bin/rar"))
         candidates.append(URL(fileURLWithPath: "/usr/local/bin/rar"))
         candidates.append(URL(fileURLWithPath: "/opt/local/bin/rar"))

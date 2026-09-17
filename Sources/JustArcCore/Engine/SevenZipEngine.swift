@@ -263,6 +263,31 @@ public struct SevenZipEngine: ArchiveEngine {
         }
     }
 
+    /// Writes an edited copy of one entry back, preserving its path inside the archive.
+    public func update(fileAt localURL: URL,
+                       entryPath: String,
+                       in archive: URL,
+                       options: CompressionOptions,
+                       cancellation: CancellationToken? = nil,
+                       progress: ProgressHandler? = nil) async throws {
+        let tool = try EngineLocator.requireSevenZip()
+        let staging = try EntryStaging(localURL: localURL, entryPath: entryPath)
+        defer { staging.cleanup() }
+
+        var arguments = ["a", archive.path, "-bsp1"] + Self.commonFlags
+        arguments.append("-t\(sevenZipType(for: options.formatKey))")
+        arguments.append(contentsOf: writePasswordFlags(options.password))
+        arguments.append(staging.relativePath)
+
+        let result = try await ProcessRunner.run(executable: tool,
+                                                 arguments: arguments,
+                                                 currentDirectory: staging.root,
+                                                 cancellation: cancellation)
+        if result.exitCode != 0 && result.exitCode != 1 {
+            throw Self.classify(result: result, password: options.password)
+        }
+    }
+
     public func rename(entry: ArchiveEntry, to newPath: String, in archive: URL, password: String?) async throws {
         guard PathSafety.isSafe(entryPath: newPath) else { throw ArchiveError.unsafeEntry(newPath) }
         let tool = try EngineLocator.requireSevenZip()

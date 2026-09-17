@@ -27,6 +27,70 @@
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
 
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict><key>default</key><string>Compress with JustArc</string></dict>
+			<key>NSMessage</key><string>compressSelection</string>
+			<key>NSPortName</key><string>JustArc</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.file-url</string>
+				<string>NSFilenamesPboardType</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict><key>NSTextContent</key><string>FilePath</string></dict>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict><key>default</key><string>Compress with JustArc (Choose Format)</string></dict>
+			<key>NSMessage</key><string>compressSelectionWithOptions</string>
+			<key>NSPortName</key><string>JustArc</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.file-url</string>
+				<string>NSFilenamesPboardType</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict><key>NSTextContent</key><string>FilePath</string></dict>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict><key>default</key><string>Extract with JustArc</string></dict>
+			<key>NSMessage</key><string>extractSelection</string>
+			<key>NSPortName</key><string>JustArc</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.file-url</string>
+				<string>NSFilenamesPboardType</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict><key>NSTextContent</key><string>FilePath</string></dict>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict><key>default</key><string>Open Archive in JustArc</string></dict>
+			<key>NSMessage</key><string>openSelection</string>
+			<key>NSPortName</key><string>JustArc</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.file-url</string>
+				<string>NSFilenamesPboardType</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict><key>NSTextContent</key><string>FilePath</string></dict>
+		</dict>
+	</array>
+
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ru</string>
+	</array>
+
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
