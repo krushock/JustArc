@@ -86,24 +86,38 @@ extension ArchiveBrowserViewController {
 
         // Everything that would be written, so collisions can be found up front.
         let candidates = entries ?? session.listing.entries
-        guard let overwrite = ConflictPrompt.resolve(entries: candidates,
-                                                     destination: destination,
-                                                     window: view.window) else { return }
+        guard let resolution = ConflictPrompt.resolve(entries: candidates,
+                                                      roots: archivePaths,
+                                                      destination: destination,
+                                                      window: view.window) else { return }
+
+        let job = ExtractionJob(archive: archiveURL,
+                                destination: destination,
+                                password: session.password,
+                                allEntries: session.listing.entries,
+                                selectedEntries: entries,
+                                roots: archivePaths,
+                                folderConflicts: resolution.folderConflicts,
+                                folderResolution: resolution.folder,
+                                fileOverwrite: resolution.file)
 
         Task {
-            let done = await runOperation(title: label) { cancellation, progress in
-                try await self.engine.extract(archive: archiveURL,
-                                              entries: entries,
-                                              to: destination,
-                                              password: self.session.password,
-                                              overwrite: overwrite,
-                                              flattenPaths: false,
-                                              cancellation: cancellation,
-                                              progress: progress)
+            let outcome = await runOperation(title: label) { cancellation, progress in
+                try await ExtractionRunner.run(job, engine: self.engine,
+                                               cancellation: cancellation, progress: progress)
             }
-            if done != nil, Preferences.revealInFinder {
-                let targets = ExtractionPlan.revealTargets(forArchivePaths: archivePaths,
-                                                           in: destination)
+            guard let outcome else { return }
+
+            if outcome.extractedNothing, !outcome.skippedFolders.isEmpty {
+                let alert = NSAlert()
+                alert.messageText = L("Nothing was extracted.")
+                alert.informativeText = L("The folders it contains were left as they were.")
+                alert.addButton(withTitle: L("OK"))
+                alert.runModal()
+                return
+            }
+            if Preferences.revealInFinder {
+                let targets = outcome.producedItems.isEmpty ? [destination] : outcome.producedItems
                 NSWorkspace.shared.activateFileViewerSelecting(targets)
             }
         }

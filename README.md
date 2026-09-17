@@ -73,8 +73,11 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ## Other things it does
 
-- **Existing files.** Extracting onto something already there asks whether to replace
-  it, keep both or skip, once for the whole operation. Settings can fix the answer.
+- **Existing files and folders.** Extracting onto something already there asks what to
+  do, once for the whole operation. A folder can be merged into, replaced, kept
+  alongside or skipped; replacing moves the old one to the Trash so it stays
+  recoverable. A file can be replaced, kept alongside or skipped. Settings can fix
+  either answer.
 - **Cloud files.** Archives in iCloud Drive, Google Drive or Dropbox are often
   placeholders with no data on disk. JustArc asks the provider to fetch one before
   reading it, shows a cancellable download panel, and names the provider if it fails.

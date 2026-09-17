@@ -15,12 +15,16 @@ final class ExtractionConflictsTests: XCTestCase {
     override func setUpWithError() throws {
         destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("conflicts-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(
-            at: destination.appendingPathComponent("payload/docs"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: destination)
+    }
+
+    private func makeFolders() throws {
+        try FileManager.default.createDirectory(
+            at: destination.appendingPathComponent("payload/docs"), withIntermediateDirectories: true)
     }
 
     private func place(_ relative: String) throws {
@@ -29,45 +33,66 @@ final class ExtractionConflictsTests: XCTestCase {
     }
 
     func testAnEmptyDestinationHasNoConflicts() {
-        let report = ExtractionConflicts.find(entries: entries, in: destination)
+        let report = ExtractionConflicts.find(entries: entries, roots: ["payload"], in: destination)
         XCTAssertTrue(report.isEmpty)
-        XCTAssertEqual(report.count, 0)
+        XCTAssertEqual(report.fileCount, 0)
+        XCTAssertTrue(report.folders.isEmpty)
+    }
+
+    /// An existing folder is reported separately from the files inside it, because
+    /// merging into it is a reasonable thing to want and a file collision is not.
+    func testAnExistingRootFolderIsAFolderConflict() throws {
+        try makeFolders()
+        let report = ExtractionConflicts.find(entries: entries, roots: ["payload"], in: destination)
+        XCTAssertEqual(report.folders, ["payload"])
+        XCTAssertFalse(report.hasFileConflicts, "no files are there yet, only the folders")
+    }
+
+    func testDirectoryEntriesAreNeverCountedAsFileConflicts() throws {
+        try makeFolders()
+        let report = ExtractionConflicts.find(entries: entries, roots: [], in: destination)
+        XCTAssertEqual(report.fileCount, 0)
     }
 
     func testOnlyFilesThatAreActuallyThereCount() throws {
+        try makeFolders()
         try place("payload/readme.txt")
-        let report = ExtractionConflicts.find(entries: entries, in: destination)
-        XCTAssertEqual(report.count, 1)
-        XCTAssertEqual(report.paths, ["payload/readme.txt"])
-    }
-
-    func testDirectoriesAreNotConflicts() throws {
-        // payload/ and payload/docs/ both exist, but merging into a folder is normal.
-        let report = ExtractionConflicts.find(entries: entries, in: destination)
-        XCTAssertTrue(report.isEmpty, "an existing folder is not a collision")
+        let report = ExtractionConflicts.find(entries: entries, roots: [], in: destination)
+        XCTAssertEqual(report.fileCount, 1)
+        XCTAssertEqual(report.files, ["payload/readme.txt"])
     }
 
     func testSeveralConflictsAreCountedAndSampled() throws {
+        try makeFolders()
         try place("payload/readme.txt")
         try place("payload/docs/notes.txt")
         try place("payload/new.txt")
 
-        let report = ExtractionConflicts.find(entries: entries, in: destination, sampleLimit: 2)
-        XCTAssertEqual(report.count, 3)
-        XCTAssertEqual(report.paths.count, 2, "the sample is capped for display")
+        let report = ExtractionConflicts.find(entries: entries, roots: [], in: destination,
+                                              sampleLimit: 2)
+        XCTAssertEqual(report.fileCount, 3)
+        XCTAssertEqual(report.files.count, 2, "the sample is capped for display")
     }
 
     func testUnsafePathsAreIgnored() {
         let hostile = [ArchiveEntry(path: "../escape.txt", isDirectory: false)]
-        XCTAssertTrue(ExtractionConflicts.find(entries: hostile, in: destination).isEmpty)
+        let report = ExtractionConflicts.find(entries: hostile, roots: ["../escape"], in: destination)
+        XCTAssertTrue(report.isEmpty)
     }
 
     func testADanglingSymlinkStillCounts() throws {
+        try makeFolders()
         let link = destination.appendingPathComponent("payload/readme.txt")
         try FileManager.default.createSymbolicLink(
             at: link, withDestinationURL: URL(fileURLWithPath: "/nowhere-\(UUID().uuidString)"))
-        let report = ExtractionConflicts.find(entries: entries, in: destination)
-        XCTAssertEqual(report.count, 1, "extracting over a broken link would still fail")
+        let report = ExtractionConflicts.find(entries: entries, roots: [], in: destination)
+        XCTAssertEqual(report.fileCount, 1, "extracting over a broken link would still fail")
+    }
+
+    func testAFileWhereAFolderShouldGoIsNotAFolderConflict() throws {
+        try place("payload")
+        let report = ExtractionConflicts.find(entries: entries, roots: ["payload"], in: destination)
+        XCTAssertTrue(report.folders.isEmpty, "a file is not something you can merge into")
     }
 }
 

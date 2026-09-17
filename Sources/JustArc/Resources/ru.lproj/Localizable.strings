@@ -16,12 +16,14 @@
 "%@ was edited outside JustArc." = "Файл %@ был изменён вне JustArc.";
 "%@ was not found after extraction." = "Файл %@ не найден после распаковки.";
 "%d files opened from this archive were edited outside JustArc." = "Файлов из этого архива изменено вне JustArc: %d.";
+"%d folders already exist in “%@”." = "В папке «%@» уже есть папок: %d.";
 "%d items already exist in “%@”." = "В папке «%@» уже есть объектов: %d.";
 "1 GB" = "1 ГБ";
 "100 MB" = "100 МБ";
 "4480 MB (DVD)" = "4480 МБ (DVD)";
 "700 MB (CD)" = "700 МБ (CD)";
 "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool." = "Быстрый архиватор для macOS.\n\nСжатие работает на 7-Zip %@ по лицензии GNU LGPL. Образы дисков используют системную утилиту hdiutil.";
+"A folder named “%@” already exists in “%@”." = "Папка «%@» уже есть в «%@».";
 "About JustArc" = "О программе JustArc";
 "Add" = "Добавить";
 "Add Files…" = "Добавить файлы…";
@@ -113,6 +115,7 @@
 "Hide Others" = "Скрыть остальные";
 "ISO Image" = "Образ ISO";
 "If a file exists:" = "Если файл уже есть:";
+"If a folder exists:" = "Если папка уже есть:";
 "Info" = "Сведения";
 "Install RARLAB's command line tool, then point JustArc at it in Settings." = "Установите утилиту командной строки RARLAB и укажите путь к ней в настройках JustArc.";
 "Invert Selection" = "Инвертировать выделение";
@@ -133,6 +136,9 @@
 "Korean (EUC-KR)" = "Корейская (EUC-KR)";
 "Location: %@" = "Расположение: %@";
 "Maximum" = "Максимальное";
+"Merge" = "Объединить";
+"Merge into it" = "Объединять с ней";
+"Merging adds the archive’s files to the folder that is already there. Replacing moves it to the Trash first." = "Объединение добавит файлы из архива в существующую папку. Замена сначала переместит её в Корзину.";
 "Minimize" = "Убрать в Dock";
 "Modified" = "Изменён";
 "Move the archive to the Trash afterwards" = "Перемещать архив в Корзину после распаковки";
@@ -145,6 +151,8 @@
 "Normal" = "Обычное";
 "Not installed — RAR archives are read-only." = "Не установлено — архивы RAR доступны только для чтения.";
 "Nothing in %@ could be read. The image mounted but appeared empty." = "Не удалось прочитать содержимое %@. Образ смонтирован, но оказался пустым.";
+"Nothing was extracted from %@." = "Из архива %@ ничего не извлечено.";
+"Nothing was extracted." = "Ничего не извлечено.";
 "OK" = "OK";
 "One item already exists in “%@”." = "В папке «%@» уже есть такой объект.";
 "Open" = "Открыть";
@@ -173,6 +181,7 @@
 "Rename…" = "Переименовать…";
 "Renaming in %@" = "Переименование в %@";
 "Replace" = "Заменить";
+"Replace it" = "Заменять её";
 "Replace the existing file" = "Заменять существующий файл";
 "Reveal Archive in Finder" = "Показать архив в Finder";
 "Reveal the result in Finder" = "Показывать результат в Finder";
@@ -200,6 +209,7 @@
 "Skip" = "Пропустить";
 "Skip .DS_Store and resource forks" = "Пропускать .DS_Store и ресурсные вилки";
 "Skip .DS_Store and resource forks when compressing" = "Пропускать .DS_Store и ресурсные вилки при сжатии";
+"Skip it" = "Пропускать её";
 "Skip the new file" = "Пропускать новый файл";
 "Solid: %@" = "Непрерывный: %@";
 "Split into:" = "Разбить на тома:";
@@ -232,6 +242,7 @@
 "The downloaded tool would not run. %@" = "Загруженная утилита не запускается. %@";
 "The file was too small to be the RAR tools." = "Файл слишком мал, чтобы быть утилитами RAR.";
 "The files you added have not been written to an archive yet." = "Добавленные файлы ещё не записаны в архив.";
+"The folders it contains were left as they were." = "Папки внутри остались без изменений.";
 "The operation was cancelled." = "Операция отменена.";
 "The password is incorrect." = "Неверный пароль.";
 "The server refused the request." = "Сервер отклонил запрос.";

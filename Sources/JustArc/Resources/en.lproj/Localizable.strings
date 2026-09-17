@@ -16,12 +16,14 @@
 "%@ was edited outside JustArc." = "%@ was edited outside JustArc.";
 "%@ was not found after extraction." = "%@ was not found after extraction.";
 "%d files opened from this archive were edited outside JustArc." = "%d files opened from this archive were edited outside JustArc.";
+"%d folders already exist in “%@”." = "%d folders already exist in “%@”.";
 "%d items already exist in “%@”." = "%d items already exist in “%@”.";
 "1 GB" = "1 GB";
 "100 MB" = "100 MB";
 "4480 MB (DVD)" = "4480 MB (DVD)";
 "700 MB (CD)" = "700 MB (CD)";
 "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool." = "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool.";
+"A folder named “%@” already exists in “%@”." = "A folder named “%@” already exists in “%@”.";
 "About JustArc" = "About JustArc";
 "Add" = "Add";
 "Add Files…" = "Add Files…";
@@ -113,6 +115,7 @@
 "Hide Others" = "Hide Others";
 "ISO Image" = "ISO Image";
 "If a file exists:" = "If a file exists:";
+"If a folder exists:" = "If a folder exists:";
 "Info" = "Info";
 "Install RARLAB's command line tool, then point JustArc at it in Settings." = "Install RARLAB's command line tool, then point JustArc at it in Settings.";
 "Invert Selection" = "Invert Selection";
@@ -133,6 +136,9 @@
 "Korean (EUC-KR)" = "Korean (EUC-KR)";
 "Location: %@" = "Location: %@";
 "Maximum" = "Maximum";
+"Merge" = "Merge";
+"Merge into it" = "Merge into it";
+"Merging adds the archive’s files to the folder that is already there. Replacing moves it to the Trash first." = "Merging adds the archive’s files to the folder that is already there. Replacing moves it to the Trash first.";
 "Minimize" = "Minimize";
 "Modified" = "Modified";
 "Move the archive to the Trash afterwards" = "Move the archive to the Trash afterwards";
@@ -145,6 +151,8 @@
 "Normal" = "Normal";
 "Not installed — RAR archives are read-only." = "Not installed — RAR archives are read-only.";
 "Nothing in %@ could be read. The image mounted but appeared empty." = "Nothing in %@ could be read. The image mounted but appeared empty.";
+"Nothing was extracted from %@." = "Nothing was extracted from %@.";
+"Nothing was extracted." = "Nothing was extracted.";
 "OK" = "OK";
 "One item already exists in “%@”." = "One item already exists in “%@”.";
 "Open" = "Open";
@@ -173,6 +181,7 @@
 "Rename…" = "Rename…";
 "Renaming in %@" = "Renaming in %@";
 "Replace" = "Replace";
+"Replace it" = "Replace it";
 "Replace the existing file" = "Replace the existing file";
 "Reveal Archive in Finder" = "Reveal Archive in Finder";
 "Reveal the result in Finder" = "Reveal the result in Finder";
@@ -200,6 +209,7 @@
 "Skip" = "Skip";
 "Skip .DS_Store and resource forks" = "Skip .DS_Store and resource forks";
 "Skip .DS_Store and resource forks when compressing" = "Skip .DS_Store and resource forks when compressing";
+"Skip it" = "Skip it";
 "Skip the new file" = "Skip the new file";
 "Solid: %@" = "Solid: %@";
 "Split into:" = "Split into:";
@@ -232,6 +242,7 @@
 "The downloaded tool would not run. %@" = "The downloaded tool would not run. %@";
 "The file was too small to be the RAR tools." = "The file was too small to be the RAR tools.";
 "The files you added have not been written to an archive yet." = "The files you added have not been written to an archive yet.";
+"The folders it contains were left as they were." = "The folders it contains were left as they were.";
 "The operation was cancelled." = "The operation was cancelled.";
 "The password is incorrect." = "The password is incorrect.";
 "The server refused the request." = "The server refused the request.";

@@ -31,6 +31,7 @@ enum Preferences {
             Key.quitAfterQuickExtract: true,
             Key.browseInsteadOfExtracting: false,
             Key.overwriteMode: OverwriteModeSetting.ask.rawValue,
+            Key.folderConflictMode: FolderConflictSetting.ask.rawValue,
             Key.excludeMacMetadata: true,
             Key.defaultFormat: "zip",
             Key.defaultLevel: 5,
@@ -47,6 +48,7 @@ enum Preferences {
         static let quitAfterQuickExtract = "QuitAfterQuickExtract"
         static let browseInsteadOfExtracting = "BrowseInsteadOfExtracting"
         static let overwriteMode = "OverwriteMode"
+        static let folderConflictMode = "FolderConflictMode"
         static let excludeMacMetadata = "ExcludeMacMetadata"
         static let defaultFormat = "DefaultFormat"
         static let defaultLevel = "DefaultLevel"
@@ -76,6 +78,45 @@ enum Preferences {
             case .rename: return .renameNew
             }
         }
+    }
+
+    /// The same question for folders, which has an extra answer: merge.
+    enum FolderConflictSetting: String, CaseIterable {
+        case ask, merge, replace, keepBoth, skip
+
+        init(_ resolution: FolderConflictResolution) {
+            switch resolution {
+            case .merge: self = .merge
+            case .replace: self = .replace
+            case .keepBoth: self = .keepBoth
+            case .skip: self = .skip
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .ask: return L("Ask what to do")
+            case .merge: return L("Merge into it")
+            case .replace: return L("Replace it")
+            case .keepBoth: return L("Keep both")
+            case .skip: return L("Skip it")
+            }
+        }
+
+        var resolved: FolderConflictResolution? {
+            switch self {
+            case .ask: return nil
+            case .merge: return .merge
+            case .replace: return .replace
+            case .keepBoth: return .keepBoth
+            case .skip: return .skip
+            }
+        }
+    }
+
+    static var folderConflictMode: FolderConflictSetting {
+        get { FolderConflictSetting(rawValue: defaults.string(forKey: Key.folderConflictMode) ?? "") ?? .ask }
+        set { defaults.set(newValue.rawValue, forKey: Key.folderConflictMode) }
     }
 
     static var overwriteMode: OverwriteModeSetting {

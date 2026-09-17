@@ -19,6 +19,7 @@ final class PreferencesWindowController: NSWindowController {
     private let formatPopUp = NSPopUpButton()
     private let levelPopUp = NSPopUpButton()
     private let conflictPopUp = NSPopUpButton()
+    private let folderConflictPopUp = NSPopUpButton()
 
     private let rarStatusLabel = NSTextField(labelWithString: "")
     private let rarProgress = NSProgressIndicator()
@@ -64,12 +65,17 @@ final class PreferencesWindowController: NSWindowController {
             conflictPopUp.addItem(withTitle: setting.title)
             conflictPopUp.lastItem?.representedObject = setting.rawValue
         }
+        for setting in Preferences.FolderConflictSetting.allCases {
+            folderConflictPopUp.addItem(withTitle: setting.title)
+            folderConflictPopUp.lastItem?.representedObject = setting.rawValue
+        }
 
         for box in [smartFolderBox, revealBox, trashBox, quitBox, browseBox, metadataBox] {
             box.target = self
             box.action = #selector(valueChanged)
         }
-        for control in [destinationPopUp, formatPopUp, levelPopUp, conflictPopUp] {
+        for control in [destinationPopUp, formatPopUp, levelPopUp,
+                        conflictPopUp, folderConflictPopUp] {
             control.target = self
             control.action = #selector(valueChanged)
         }
@@ -113,6 +119,7 @@ final class PreferencesWindowController: NSWindowController {
             [NSView(), quitBox],
             [NSView(), browseBox],
             [caption(L("If a file exists:")), conflictPopUp],
+            [caption(L("If a folder exists:")), folderConflictPopUp],
             [heading(L("New archives"))],
             [caption(L("Format:")), formatPopUp],
             [caption(L("Compression:")), levelPopUp],
@@ -166,6 +173,11 @@ final class PreferencesWindowController: NSWindowController {
             ($0.representedObject as? String) == Preferences.overwriteMode.rawValue
         } ?? 0
         conflictPopUp.selectItem(at: conflictIndex)
+
+        let folderIndex = folderConflictPopUp.itemArray.firstIndex {
+            ($0.representedObject as? String) == Preferences.folderConflictMode.rawValue
+        } ?? 0
+        folderConflictPopUp.selectItem(at: folderIndex)
     }
 
     @objc private func valueChanged() {
@@ -184,6 +196,10 @@ final class PreferencesWindowController: NSWindowController {
         if let raw = conflictPopUp.selectedItem?.representedObject as? String,
            let setting = Preferences.OverwriteModeSetting(rawValue: raw) {
             Preferences.overwriteMode = setting
+        }
+        if let raw = folderConflictPopUp.selectedItem?.representedObject as? String,
+           let setting = Preferences.FolderConflictSetting(rawValue: raw) {
+            Preferences.folderConflictMode = setting
         }
     }
 

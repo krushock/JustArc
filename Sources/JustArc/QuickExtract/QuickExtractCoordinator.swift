@@ -80,12 +80,14 @@ final class QuickExtractCoordinator {
 
         // Step 2: a wrapper folder is created unique, so only extracting into a folder
         // that is already there can collide with its contents.
-        var overwrite = OverwriteMode.renameNew
+        let roots = EntryTree(entries: listing.entries).root.children.map(\.path)
+        var resolution = ConflictPrompt.Resolution(folder: .merge, file: .renameNew)
         if !plan.createdWrapperFolder {
             guard let chosen = ConflictPrompt.resolve(entries: listing.entries,
+                                                      roots: roots,
                                                       destination: plan.destination,
                                                       window: nil) else { return }
-            overwrite = chosen
+            resolution = chosen
         }
 
         // Step 3: extract, showing the progress panel.
@@ -112,15 +114,17 @@ final class QuickExtractCoordinator {
         }
 
         do {
-            try await extractWithPasswordRetry(engine: engine,
-                                               archive: archive,
-                                               plan: plan,
-                                               overwrite: overwrite,
-                                               password: &password,
-                                               cancellation: cancellation,
-                                               panel: panel)
+            let outcome = try await extractWithPasswordRetry(engine: engine,
+                                                             archive: archive,
+                                                             listing: listing,
+                                                             plan: plan,
+                                                             roots: roots,
+                                                             resolution: resolution,
+                                                             password: &password,
+                                                             cancellation: cancellation,
+                                                             panel: panel)
             panel.finish()
-            finishUp(archive: archive, plan: plan)
+            finishUp(archive: archive, plan: plan, outcome: outcome)
         } catch let error as ArchiveError where error == .cancelled {
             panel.finish()
             if plan.createdWrapperFolder {
@@ -134,26 +138,30 @@ final class QuickExtractCoordinator {
 
     private func extractWithPasswordRetry(engine: ArchiveEngine,
                                           archive: URL,
+                                          listing: ArchiveListing,
                                           plan: ExtractionPlan,
-                                          overwrite: OverwriteMode,
+                                          roots: [String],
+                                          resolution: ConflictPrompt.Resolution,
                                           password: inout String?,
                                           cancellation: CancellationToken,
-                                          panel: ProgressWindowController) async throws {
+                                          panel: ProgressWindowController) async throws -> ExtractionOutcome {
         var attempt = 0
         while true {
             do {
-                let current = password
-                try await engine.extract(archive: archive,
-                                         entries: nil,
-                                         to: plan.destination,
-                                         password: current,
-                                         overwrite: overwrite,
-                                         flattenPaths: false,
-                                         cancellation: cancellation,
-                                         progress: { progress in
-                                             Task { @MainActor in panel.update(progress) }
-                                         })
-                return
+                let job = ExtractionJob(archive: archive,
+                                        destination: plan.destination,
+                                        password: password,
+                                        allEntries: listing.entries,
+                                        selectedEntries: nil,
+                                        roots: roots,
+                                        folderConflicts: resolution.folderConflicts,
+                                        folderResolution: resolution.folder,
+                                        fileOverwrite: resolution.file)
+                return try await ExtractionRunner.run(job, engine: engine,
+                                                      cancellation: cancellation,
+                                                      progress: { progress in
+                                                          Task { @MainActor in panel.update(progress) }
+                                                      })
             } catch let error as ArchiveError where error.isPasswordProblem {
                 guard attempt < 3,
                       let response = PasswordPrompt.ask(archiveName: archive.lastPathComponent,
@@ -168,15 +176,29 @@ final class QuickExtractCoordinator {
         }
     }
 
-    private func finishUp(archive: URL, plan: ExtractionPlan) {
+    private func finishUp(archive: URL, plan: ExtractionPlan, outcome: ExtractionOutcome) {
+        if outcome.extractedNothing, !outcome.skippedFolders.isEmpty {
+            // Everything in the archive was skipped, so say so rather than silently
+            // opening a folder that did not change.
+            let alert = NSAlert()
+            alert.messageText = L("Nothing was extracted from %@.", archive.lastPathComponent)
+            alert.informativeText = L("The folders it contains were left as they were.")
+            alert.addButton(withTitle: L("OK"))
+            alert.runModal()
+            return
+        }
+
         if Preferences.moveArchiveToTrash {
             try? FileManager.default.trashItem(at: archive, resultingItemURL: nil)
         }
         if Preferences.revealInFinder {
-            let target = FileManager.default.fileExists(atPath: plan.revealTarget.path)
-                ? plan.revealTarget
-                : plan.destination
-            NSWorkspace.shared.activateFileViewerSelecting([target])
+            // A wrapper folder is the thing to show; otherwise show what was produced.
+            var targets = outcome.producedItems
+            if plan.createdWrapperFolder || targets.isEmpty {
+                targets = [FileManager.default.fileExists(atPath: plan.revealTarget.path)
+                    ? plan.revealTarget : plan.destination]
+            }
+            NSWorkspace.shared.activateFileViewerSelecting(targets)
         }
     }
 
