@@ -76,6 +76,8 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        // Detaches the disk image, if this window had one mounted.
+        session.close()
         onClose?()
     }
 }

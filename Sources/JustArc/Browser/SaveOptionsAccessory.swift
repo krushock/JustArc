@@ -33,8 +33,7 @@ final class SaveOptionsAccessory: NSView {
         FormatRegistry.writable.filter { format in
             switch format.engine {
             case .externalRAR: return EngineLocator.externalRAR != nil
-            case .diskImage: return false
-            case .sevenZip: return true
+            case .diskImage, .sevenZip: return true
             }
         }
     }

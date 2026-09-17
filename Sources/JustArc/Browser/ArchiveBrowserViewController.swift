@@ -7,7 +7,8 @@ import JustArcCore
 @MainActor
 final class ArchiveBrowserViewController: NSViewController {
     let session: ArchiveSession
-    let engine = SevenZipEngine()
+    /// Follows the session, so a disk image window drives hdiutil.
+    var engine: ArchiveEngine { session.engine }
 
     private let toolbar = ArchiveToolbarView()
     private let pathBar = ArchivePathBar()
@@ -249,10 +250,11 @@ final class ArchiveBrowserViewController: NSViewController {
         icon?.size = NSSize(width: 14, height: 14)
         pathBar.update(archiveName: session.displayName, currentPath: currentPath, icon: icon)
 
-        let writable = !session.isReadOnly
-        toolbar.setEnabled(writable, for: .add)
-        toolbar.setEnabled(writable, for: .delete)
-        toolbar.setEnabled(writable, for: .save)
+        // Adding and deleting need in-place editing; Save As works for any writable format.
+        let editable = session.canModifyContents
+        toolbar.setEnabled(editable, for: .add)
+        toolbar.setEnabled(editable, for: .delete)
+        toolbar.setEnabled(session.canSaveAs, for: .save)
         toolbar.setEnabled(!session.isUntitled, for: .test)
         toolbar.setEnabled(!session.isUntitled, for: .password)
 

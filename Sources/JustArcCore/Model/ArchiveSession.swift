@@ -18,7 +18,9 @@ public final class ArchiveSession {
     /// Entries the user marked for removal, applied on the next save.
     public private(set) var pendingDeletions: Set<String> = []
 
-    private let engine = SevenZipEngine()
+    /// Resolved from the archive's format, so disk images use hdiutil and
+    /// everything else uses 7-Zip.
+    public var engine: ArchiveEngine { EngineFactory.engine(for: format) }
 
     public init(archiveURL: URL?) {
         self.archiveURL = archiveURL
@@ -39,10 +41,25 @@ public final class ArchiveSession {
         return FormatRegistry.format(for: archiveURL)
     }
 
-    public var isReadOnly: Bool {
-        guard let format else { return true }
-        if format.engine == .externalRAR { return EngineLocator.externalRAR == nil }
-        return !format.canWrite
+    /// Whether entries can be added to or removed from the archive as it stands.
+    /// Formats that can only be rebuilt, such as .tar.gz and disk images, say no
+    /// here but can still be written with Save As.
+    public var canModifyContents: Bool {
+        guard let format else { return false }
+        if archiveURL == nil { return true }
+        if format.engine == .externalRAR { return EngineLocator.externalRAR != nil }
+        return format.canWrite && format.canEditInPlace
+    }
+
+    /// True when the archive can be written at all, in this or another format.
+    public var canSaveAs: Bool { true }
+
+    public var isReadOnly: Bool { !canModifyContents }
+
+    /// Releases anything the engine holds for this archive, such as a mounted disk image.
+    public func close() {
+        guard let archiveURL else { return }
+        EngineFactory.engine(for: archiveURL).release(archive: archiveURL)
     }
 
     public var hasUnsavedChanges: Bool {
@@ -162,6 +179,11 @@ public final class ArchiveSession {
                                        cancellation: cancellation, progress: progress)
         }
 
+        // Whatever the engine held for the previous file is stale now, whether we
+        // wrote over it or wrote somewhere new.
+        if let previous = archiveURL {
+            EngineFactory.engine(for: previous).release(archive: previous)
+        }
         archiveURL = destination
         clearPendingChanges()
         try await load()
@@ -197,10 +219,11 @@ public final class ArchiveSession {
         if let archiveURL, !listing.entries.isEmpty {
             let keep = listing.entries.filter { !pendingDeletions.contains($0.path) && !$0.isDirectory }
             if !keep.isEmpty {
-                try await engine.extract(archive: archiveURL, entries: keep, to: scratch,
-                                         password: password, overwrite: .overwrite,
-                                         flattenPaths: false, cancellation: cancellation,
-                                         progress: progress)
+                let sourceEngine = EngineFactory.engine(for: archiveURL)
+                try await sourceEngine.extract(archive: archiveURL, entries: keep, to: scratch,
+                                               password: password, overwrite: .overwrite,
+                                               flattenPaths: false, cancellation: cancellation,
+                                               progress: progress)
                 let contents = try FileManager.default.contentsOfDirectory(
                     at: scratch, includingPropertiesForKeys: nil)
                 roots.append(contentsOf: contents)
@@ -214,8 +237,9 @@ public final class ArchiveSession {
 
         let temporaryArchive = scratch.deletingLastPathComponent()
             .appendingPathComponent("justarc-out-\(UUID().uuidString)-\(destination.lastPathComponent)")
-        try await engine.create(archive: temporaryArchive, items: roots, options: options,
-                                cancellation: cancellation, progress: progress)
+        let destinationEngine = EngineFactory.engine(for: destination)
+        try await destinationEngine.create(archive: temporaryArchive, items: roots, options: options,
+                                           cancellation: cancellation, progress: progress)
 
         if FileManager.default.fileExists(atPath: destination.path) {
             _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporaryArchive)

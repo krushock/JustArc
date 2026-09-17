@@ -230,7 +230,10 @@ extension ArchiveBrowserViewController {
             }
             guard let report else { return }
             let alert = NSAlert()
-            let ok = report.lowercased().contains("everything is ok")
+            // The engine throws on failure, so reaching here means it passed unless
+            // the report itself mentions trouble.
+            let lowered = report.lowercased()
+            let ok = !lowered.contains("error") && !lowered.contains("warning")
             alert.messageText = ok ? "No errors found." : "The test reported problems."
             alert.informativeText = report
             alert.alertStyle = ok ? .informational : .warning
@@ -321,7 +324,7 @@ extension ArchiveBrowserViewController {
         return "\(stem.isEmpty ? "Archive" : stem).\(format.extensions[0])"
     }
 
-    private func currentCompressionOptions() -> CompressionOptions {
+    func currentCompressionOptions() -> CompressionOptions {
         CompressionOptions(formatKey: session.format?.key ?? Preferences.defaultFormatKey,
                            level: Preferences.defaultLevel,
                            password: session.password,

@@ -5,7 +5,6 @@ import JustArcCore
 /// then let the app quit. No main window is ever created.
 @MainActor
 final class QuickExtractCoordinator {
-    private let engine = SevenZipEngine()
     private var queue: [URL] = []
     private var isRunning = false
 
@@ -31,6 +30,10 @@ final class QuickExtractCoordinator {
 
     private func process(_ archive: URL) async {
         guard let parent = resolveDestinationParent(for: archive) else { return }
+
+        // Disk images go through hdiutil, everything else through 7-Zip.
+        let engine = EngineFactory.engine(for: archive)
+        defer { engine.release(archive: archive) }
 
         // Step 1: read the table of contents, asking for a password if the archive needs one.
         var password: String? = KeychainStore.password(for: archive)
@@ -91,7 +94,8 @@ final class QuickExtractCoordinator {
         }
 
         do {
-            try await extractWithPasswordRetry(archive: archive,
+            try await extractWithPasswordRetry(engine: engine,
+                                               archive: archive,
                                                plan: plan,
                                                password: &password,
                                                cancellation: cancellation,
@@ -109,7 +113,8 @@ final class QuickExtractCoordinator {
         }
     }
 
-    private func extractWithPasswordRetry(archive: URL,
+    private func extractWithPasswordRetry(engine: ArchiveEngine,
+                                          archive: URL,
                                           plan: ExtractionPlan,
                                           password: inout String?,
                                           cancellation: CancellationToken,

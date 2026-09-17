@@ -23,6 +23,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             presentMissingEngineAndQuit()
             return
         }
+        // Paths on the command line behave exactly like files opened from Finder,
+        // which makes the app scriptable and testable.
+        let fileArguments = CommandLine.arguments.dropFirst()
+            .filter { !$0.hasPrefix("-") && FileManager.default.fileExists(atPath: $0) }
+            .map { URL(fileURLWithPath: $0) }
+        if !fileArguments.isEmpty {
+            application(NSApp, open: fileArguments)
+        }
         // The open-document event lands between will- and didFinishLaunching, but give it
         // one more turn of the run loop before deciding this was a bare launch.
         DispatchQueue.main.async { [weak self] in
@@ -55,6 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Leaving a disk image attached after quitting would strand it in Finder.
+        EngineFactory.releaseAll()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

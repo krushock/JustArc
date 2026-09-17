@@ -29,18 +29,37 @@ public enum PathSafety {
     }
 
     /// Confirms a resolved destination really sits inside the extraction root.
+    ///
+    /// The root is resolved once and the target is built from it, so both sides of the
+    /// containment check are spelled the same way. Standardising them separately does
+    /// not work: `standardizedFileURL` rewrites `/private/tmp` to `/tmp` only when the
+    /// path already exists, so an existing destination and its not-yet-created child
+    /// end up with different prefixes and every entry looks like a traversal attempt.
     public static func resolvedURL(for entryPath: String, in destination: URL) throws -> URL {
         guard isSafe(entryPath: entryPath) else {
             throw ArchiveError.unsafeEntry(entryPath)
         }
-        let target = destination.appendingPathComponent(entryPath).standardizedFileURL
-        let root = destination.standardizedFileURL
+
+        let root = canonicalRoot(destination)
+        let target = root.appendingPathComponent(ArchivePath.normalize(entryPath))
+
         var rootPath = root.path
         if !rootPath.hasSuffix("/") { rootPath += "/" }
         guard target.path.hasPrefix(rootPath) else {
             throw ArchiveError.unsafeEntry(entryPath)
         }
         return target
+    }
+
+    /// One canonical spelling for an extraction root, used for every containment check.
+    public static func canonicalRoot(_ destination: URL) -> URL {
+        destination.resolvingSymlinksInPath().standardizedFileURL
+    }
+
+    /// Existence check that does not follow symbolic links, so a link pointing at a
+    /// missing file still counts as present and is never written through.
+    public static func itemExists(at url: URL) -> Bool {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
     }
 
     public struct BombVerdict: Sendable {
@@ -69,7 +88,7 @@ public enum PathSafety {
     /// Returns a URL that does not exist yet, appending " 2", " 3" and so on.
     public static func uniqueURL(for proposed: URL) -> URL {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: proposed.path) else { return proposed }
+        guard itemExists(at: proposed) else { return proposed }
         let directory = proposed.deletingLastPathComponent()
         let ext = proposed.pathExtension
         let base = proposed.deletingPathExtension().lastPathComponent
@@ -78,7 +97,7 @@ public enum PathSafety {
             var name = "\(base) \(counter)"
             if !ext.isEmpty { name += ".\(ext)" }
             let candidate = directory.appendingPathComponent(name)
-            if !fm.fileExists(atPath: candidate.path) { return candidate }
+            if !itemExists(at: candidate) { return candidate }
             counter += 1
         }
         return directory.appendingPathComponent("\(base) \(UUID().uuidString)")

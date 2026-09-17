@@ -27,10 +27,16 @@ entries out to Finder.
 | gz, bz2, xz, zst | yes | yes |
 | rar, rar5 | yes | only with RARLAB's `rar` installed |
 | iso, cab, xar, pkg, cpio, deb, rpm, wim, lzh, arj, msi, chm | yes | no |
-| dmg | listed by format registry, engine not wired up yet | not yet |
+| dmg | yes, via hdiutil | yes, zlib or LZFSE, optional AES-256 |
 
 Passwords are supported for zip (ZipCrypto and AES-256), 7z including encrypted
-headers, and rar.
+headers, rar, and encrypted disk images.
+
+**Disk images** are attached read-only at a private mount point, so you see the real
+filesystem rather than the UDIF container. The mount is held for as long as the window
+is open and detached when it closes or the app quits. Symlinks, permissions and
+extended attributes survive extraction, so the `/Applications` link that app images
+ship with is copied as a link and never written through.
 
 ## Building
 
@@ -56,9 +62,21 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 - `Vendor/7zz` — the 7-Zip binary, universal, under the GNU LGPL. Refresh it with
   `Scripts/fetch-7zz.sh`.
 
+## Debugging
+
+The app takes file paths on the command line, which behave exactly like files opened
+from Finder. Set `JUSTARC_VERBOSE=1` to mirror engine logging onto stderr:
+
+```bash
+JUSTARC_VERBOSE=1 ./build/JustArc.app/Contents/MacOS/JustArc ~/Downloads/thing.dmg
+```
+
+Engine logging also goes to the unified log under the `com.justarc.JustArc` subsystem.
+
 ## Known gaps
 
-- Disk images are recognised but `hdiutil` is not wired in yet, so `.dmg` cannot be
-  browsed or created.
 - Split volumes can be read but the Save panel does not offer a volume size yet.
+- RAR writing needs RARLAB's `rar` on the system; nothing ships with the app.
+- macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
+  the only option on older systems, so the migration is deferred.
 - No code signing, notarization or updater. `build-app.sh` signs ad-hoc for local use.

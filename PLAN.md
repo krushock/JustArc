@@ -86,15 +86,20 @@ Declare `CFBundleDocumentTypes` (Viewer for read-only, Editor for writable) for:
 |---|---|---|---|
 | M0 | Skeleton | **done** | SwiftPM package, JustArcCore, bundled 7zz 25.01 universal, list/extract/test/create/add/delete/rename, 42 tests |
 | M1 | Quick Extract MVP | **done** | Double-click → extract → quit; password sheet with keychain option; progress/cancel; prefs pane; smart wrapper folders |
-| M2 | Browser read-only | **done, except dmg** | Window, folder tree, sortable list, path bar, filter, Quick Look, open single file, extract selected/all, drag-out |
+| M2 | Browser read-only | **done** | Window, folder tree, sortable list, path bar, filter, Quick Look, open single file, extract selected/all, drag-out, dmg via hdiutil |
 | M3 | Create & edit | **partly done** | Empty archive window, drag-in/add/delete/rename, Save and Save As with format/level/password/encrypt-names all work. Still missing: split volumes in the Save panel, external rar writing, "update edited file" |
 | M4 | Polish & ship | not started | Finder Services/Quick Actions, encoding override UI, Sparkle, Developer ID signing, notarized DMG, localisation |
-| M5 | Later | not started | hdiutil engine for dmg, XADMaster for sit/legacy, in-process 7z engine (no CLI passwords), App Store variant, Shortcuts actions |
+| M5 | Later | not started | XADMaster for sit/legacy, in-process 7z engine (no CLI passwords), App Store variant, Shortcuts actions |
 
-**Note on the dmg engine.** The format registry lists dmg and the Save panel filters
-it out, but `DMGEngine` is not written yet, so opening a .dmg falls through to 7zz
-and shows the raw UDIF layout rather than the mounted filesystem. This is the next
-piece of work.
+**Note on the dmg engine.** `DMGEngine` attaches images read-only through `hdiutil`
+at a private mount root and treats the mounted filesystem as the archive, which is the
+only way to read HFS+ and APFS images correctly. Mounts are cached per archive for the
+life of a window and detached on close and on quit. Creation maps our 0-9 compression
+scale onto UDRO, UDZO with a zlib level, and ULFO, with optional AES-256.
+
+macOS 27 prints a deprecation warning for `hdiutil` and points at `diskutil image`.
+The tool still works, and `diskutil image` does not exist on the older systems the app
+supports, so the migration waits until the minimum version rises.
 
 ## 6. Open decisions (defaults chosen, change if you disagree)
 
