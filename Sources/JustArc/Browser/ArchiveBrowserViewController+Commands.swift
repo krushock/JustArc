@@ -76,13 +76,19 @@ extension ArchiveBrowserViewController {
 
     private func extract(entries: [ArchiveEntry]?, revealing archivePaths: [String], label: String) {
         guard let archiveURL = session.archiveURL else {
-            present(ArchiveError.ioFailure("Save this archive before extracting from it."))
+            present(ArchiveError.ioFailure(L("Save this archive before extracting from it.")))
             return
         }
-        guard let destination = chooseFolder(prompt: "Extract",
-                                             message: "Choose where to extract the selected items.",
+        guard let destination = chooseFolder(prompt: L("Extract"),
+                                             message: L("Choose where to extract the selected items."),
                                              startAt: archiveURL.deletingLastPathComponent())
         else { return }
+
+        // Everything that would be written, so collisions can be found up front.
+        let candidates = entries ?? session.listing.entries
+        guard let overwrite = ConflictPrompt.resolve(entries: candidates,
+                                                     destination: destination,
+                                                     window: view.window) else { return }
 
         Task {
             let done = await runOperation(title: label) { cancellation, progress in
@@ -90,7 +96,7 @@ extension ArchiveBrowserViewController {
                                               entries: entries,
                                               to: destination,
                                               password: self.session.password,
-                                              overwrite: .renameNew,
+                                              overwrite: overwrite,
                                               flattenPaths: false,
                                               cancellation: cancellation,
                                               progress: progress)
@@ -134,7 +140,7 @@ extension ArchiveBrowserViewController {
             ? L("Update %@ with the edited file?", session.displayName)
             : L("Update %@ with the edited files?", session.displayName) + "\n\n"
               + changed.map(\.entryPath).joined(separator: "\n")
-        alert.addButton(withTitle: changed.count == 1 ? "Update Archive" : "Update Archive")
+        alert.addButton(withTitle: L("Update Archive"))
         alert.addButton(withTitle: L("Keep Unchanged"))
         guard alert.runModal() == .alertFirstButtonReturn else {
             for entry in changed { editedFiles.acknowledge(entryPath: entry.entryPath) }
@@ -287,7 +293,7 @@ extension ArchiveBrowserViewController {
             // the report itself mentions trouble.
             let lowered = report.lowercased()
             let ok = !lowered.contains("error") && !lowered.contains("warning")
-            alert.messageText = ok ? "No errors found." : "The test reported problems."
+            alert.messageText = ok ? L("No errors found.") : L("The test reported problems.")
             alert.informativeText = report
             alert.alertStyle = ok ? .informational : .warning
             alert.addButton(withTitle: L("OK"))
@@ -313,19 +319,23 @@ extension ArchiveBrowserViewController {
         alert.messageText = session.displayName
 
         var lines: [String] = []
-        lines.append("Format: \(listing.info.formatName.isEmpty ? (session.format?.displayName ?? "Unknown") : listing.info.formatName)")
-        if let url = session.archiveURL { lines.append("Location: \(url.deletingLastPathComponent().path)") }
-        lines.append("Archive size: \(Formatting.bytes(listing.info.physicalSize))")
-        lines.append("Unpacked size: \(Formatting.bytes(listing.totalSize))")
-        if listing.totalSize > 0 {
-            lines.append("Compression: \(Formatting.ratio(size: listing.totalSize, packed: listing.totalPacked))")
+        lines.append(L("Format: %@", listing.info.formatName.isEmpty
+            ? (session.format?.displayName ?? L("Unknown")) : listing.info.formatName))
+        if let url = session.archiveURL {
+            lines.append(L("Location: %@", url.deletingLastPathComponent().path))
         }
-        lines.append("Files: \(Formatting.count(listing.fileCount))")
-        lines.append("Folders: \(Formatting.count(listing.folderCount))")
-        lines.append("Solid: \(listing.info.isSolid ? "Yes" : "No")")
-        lines.append("Encrypted: \(listing.containsEncryptedEntries ? "Yes" : "No")")
-        if let volumes = listing.info.volumeCount { lines.append("Volumes: \(volumes)") }
-        if let comment = listing.info.comment { lines.append("\nComment:\n\(comment)") }
+        lines.append(L("Archive size: %@", Formatting.bytes(listing.info.physicalSize)))
+        lines.append(L("Unpacked size: %@", Formatting.bytes(listing.totalSize)))
+        if listing.totalSize > 0 {
+            lines.append(L("Compression: %@",
+                           Formatting.ratio(size: listing.totalSize, packed: listing.totalPacked)))
+        }
+        lines.append(L("Files: %@", Formatting.count(listing.fileCount)))
+        lines.append(L("Folders: %@", Formatting.count(listing.folderCount)))
+        lines.append(L("Solid: %@", listing.info.isSolid ? L("Yes") : L("No")))
+        lines.append(L("Encrypted: %@", listing.containsEncryptedEntries ? L("Yes") : L("No")))
+        if let volumes = listing.info.volumeCount { lines.append(L("Volumes: %d", volumes)) }
+        if let comment = listing.info.comment { lines.append("\n" + L("Comment:") + "\n" + comment) }
 
         alert.informativeText = lines.joined(separator: "\n")
         alert.addButton(withTitle: L("OK"))

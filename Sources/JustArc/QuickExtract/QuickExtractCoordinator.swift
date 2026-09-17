@@ -78,7 +78,17 @@ final class QuickExtractCoordinator {
                                        listing: listing,
                                        smartFolder: Preferences.smartFolder)
 
-        // Step 2: extract, showing the progress panel.
+        // Step 2: a wrapper folder is created unique, so only extracting into a folder
+        // that is already there can collide with its contents.
+        var overwrite = OverwriteMode.renameNew
+        if !plan.createdWrapperFolder {
+            guard let chosen = ConflictPrompt.resolve(entries: listing.entries,
+                                                      destination: plan.destination,
+                                                      window: nil) else { return }
+            overwrite = chosen
+        }
+
+        // Step 3: extract, showing the progress panel.
         let cancellation = CancellationToken()
         let panel = ProgressWindowController(
             title: L("Extracting %@", archive.lastPathComponent),
@@ -105,6 +115,7 @@ final class QuickExtractCoordinator {
             try await extractWithPasswordRetry(engine: engine,
                                                archive: archive,
                                                plan: plan,
+                                               overwrite: overwrite,
                                                password: &password,
                                                cancellation: cancellation,
                                                panel: panel)
@@ -124,6 +135,7 @@ final class QuickExtractCoordinator {
     private func extractWithPasswordRetry(engine: ArchiveEngine,
                                           archive: URL,
                                           plan: ExtractionPlan,
+                                          overwrite: OverwriteMode,
                                           password: inout String?,
                                           cancellation: CancellationToken,
                                           panel: ProgressWindowController) async throws {
@@ -135,7 +147,7 @@ final class QuickExtractCoordinator {
                                          entries: nil,
                                          to: plan.destination,
                                          password: current,
-                                         overwrite: .renameNew,
+                                         overwrite: overwrite,
                                          flattenPaths: false,
                                          cancellation: cancellation,
                                          progress: { progress in

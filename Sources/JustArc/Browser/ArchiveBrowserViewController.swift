@@ -481,12 +481,12 @@ extension ArchiveBrowserViewController: NSFilePromiseProviderDelegate {
                              completionHandler: @escaping (Error?) -> Void) {
         guard let path = filePromiseProvider.userInfo as? String,
               let node = session.tree.node(at: path) else {
-            completionHandler(ArchiveError.ioFailure("That item is no longer in the archive."))
+            completionHandler(ArchiveError.ioFailure(L("That item is no longer in the archive.")))
             return
         }
         Task { @MainActor in
             guard let source = await self.materialize(node: node, quiet: true) else {
-                completionHandler(ArchiveError.ioFailure("\(node.name) could not be extracted."))
+                completionHandler(ArchiveError.ioFailure(L("%@ could not be extracted.", node.name)))
                 return
             }
             do {

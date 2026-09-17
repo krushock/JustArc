@@ -30,7 +30,7 @@ enum Preferences {
             Key.moveArchiveToTrash: false,
             Key.quitAfterQuickExtract: true,
             Key.browseInsteadOfExtracting: false,
-            Key.overwriteMode: OverwriteModeSetting.rename.rawValue,
+            Key.overwriteMode: OverwriteModeSetting.ask.rawValue,
             Key.excludeMacMetadata: true,
             Key.defaultFormat: "zip",
             Key.defaultLevel: 5,
@@ -54,8 +54,33 @@ enum Preferences {
         static let rememberPasswords = "RememberPasswords"
     }
 
-    enum OverwriteModeSetting: String {
+    enum OverwriteModeSetting: String, CaseIterable {
         case ask, overwrite, skip, rename
+
+        var title: String {
+            switch self {
+            case .ask: return L("Ask what to do")
+            case .overwrite: return L("Replace the existing file")
+            case .skip: return L("Skip the new file")
+            case .rename: return L("Keep both")
+            }
+        }
+
+        /// The engine setting this choice maps onto. Nil means there is nothing to
+        /// map, because the user has to be asked first.
+        var resolved: OverwriteMode? {
+            switch self {
+            case .ask: return nil
+            case .overwrite: return .overwrite
+            case .skip: return .skip
+            case .rename: return .renameNew
+            }
+        }
+    }
+
+    static var overwriteMode: OverwriteModeSetting {
+        get { OverwriteModeSetting(rawValue: defaults.string(forKey: Key.overwriteMode) ?? "") ?? .ask }
+        set { defaults.set(newValue.rawValue, forKey: Key.overwriteMode) }
     }
 
     static var extractDestination: ExtractDestination {

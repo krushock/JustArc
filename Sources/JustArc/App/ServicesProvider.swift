@@ -27,7 +27,7 @@ final class ServicesProvider: NSObject {
                                  error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let items = Self.fileURLs(from: pasteboard)
         guard !items.isEmpty else {
-            error.pointee = "Select one or more files in the Finder first." as NSString
+            error.pointee = L("Select one or more files in the Finder first.") as NSString
             return
         }
         Task { await compress(items: items, askForOptions: false) }
@@ -38,7 +38,7 @@ final class ServicesProvider: NSObject {
                                             error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let items = Self.fileURLs(from: pasteboard)
         guard !items.isEmpty else {
-            error.pointee = "Select one or more files in the Finder first." as NSString
+            error.pointee = L("Select one or more files in the Finder first.") as NSString
             return
         }
         // Staging them into a new window lets the user pick the format and options.
@@ -50,7 +50,7 @@ final class ServicesProvider: NSObject {
                                 error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let archives = Self.fileURLs(from: pasteboard).filter { FormatRegistry.isArchive($0) }
         guard !archives.isEmpty else {
-            error.pointee = "None of the selected files is an archive JustArc can read." as NSString
+            error.pointee = L("None of the selected files is an archive JustArc can read.") as NSString
             return
         }
         quickExtract.enqueue(archives)
@@ -61,7 +61,7 @@ final class ServicesProvider: NSObject {
                              error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let archives = Self.fileURLs(from: pasteboard).filter { FormatRegistry.isArchive($0) }
         guard !archives.isEmpty else {
-            error.pointee = "None of the selected files is an archive JustArc can read." as NSString
+            error.pointee = L("None of the selected files is an archive JustArc can read.") as NSString
             return
         }
         for archive in archives { openInBrowser(archive) }

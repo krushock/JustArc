@@ -73,6 +73,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ## Other things it does
 
+- **Existing files.** Extracting onto something already there asks whether to replace
+  it, keep both or skip, once for the whole operation. Settings can fix the answer.
 - **Cloud files.** Archives in iCloud Drive, Google Drive or Dropbox are often
   placeholders with no data on disk. JustArc asks the provider to fetch one before
   reading it, shows a cancellable download panel, and names the provider if it fails.

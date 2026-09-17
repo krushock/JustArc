@@ -18,6 +18,7 @@ final class PreferencesWindowController: NSWindowController {
                                        target: nil, action: nil)
     private let formatPopUp = NSPopUpButton()
     private let levelPopUp = NSPopUpButton()
+    private let conflictPopUp = NSPopUpButton()
 
     private let rarStatusLabel = NSTextField(labelWithString: "")
     private let rarProgress = NSProgressIndicator()
@@ -27,7 +28,8 @@ final class PreferencesWindowController: NSWindowController {
     private let rarNoteLabel = NSTextField(wrappingLabelWithString: "")
 
     private let levels: [(String, Int)] = [
-        ("Store", 0), ("Fastest", 1), ("Fast", 3), ("Normal", 5), ("Maximum", 7), ("Ultra", 9),
+        (L("Store"), 0), (L("Fastest"), 1), (L("Fast"), 3),
+        (L("Normal"), 5), (L("Maximum"), 7), (L("Ultra"), 9),
     ]
 
     init() {
@@ -58,12 +60,16 @@ final class PreferencesWindowController: NSWindowController {
             formatPopUp.lastItem?.representedObject = format.key
         }
         for (title, _) in levels { levelPopUp.addItem(withTitle: title) }
+        for setting in Preferences.OverwriteModeSetting.allCases {
+            conflictPopUp.addItem(withTitle: setting.title)
+            conflictPopUp.lastItem?.representedObject = setting.rawValue
+        }
 
         for box in [smartFolderBox, revealBox, trashBox, quitBox, browseBox, metadataBox] {
             box.target = self
             box.action = #selector(valueChanged)
         }
-        for control in [destinationPopUp, formatPopUp, levelPopUp] {
+        for control in [destinationPopUp, formatPopUp, levelPopUp, conflictPopUp] {
             control.target = self
             control.action = #selector(valueChanged)
         }
@@ -106,6 +112,7 @@ final class PreferencesWindowController: NSWindowController {
             [NSView(), trashBox],
             [NSView(), quitBox],
             [NSView(), browseBox],
+            [caption(L("If a file exists:")), conflictPopUp],
             [heading(L("New archives"))],
             [caption(L("Format:")), formatPopUp],
             [caption(L("Compression:")), levelPopUp],
@@ -154,6 +161,11 @@ final class PreferencesWindowController: NSWindowController {
         } ?? 0
         formatPopUp.selectItem(at: formatIndex)
         levelPopUp.selectItem(at: levels.firstIndex { $0.1 == Preferences.defaultLevel } ?? 3)
+
+        let conflictIndex = conflictPopUp.itemArray.firstIndex {
+            ($0.representedObject as? String) == Preferences.overwriteMode.rawValue
+        } ?? 0
+        conflictPopUp.selectItem(at: conflictIndex)
     }
 
     @objc private func valueChanged() {
@@ -169,6 +181,10 @@ final class PreferencesWindowController: NSWindowController {
             Preferences.defaultFormatKey = key
         }
         Preferences.defaultLevel = levels[max(levelPopUp.indexOfSelectedItem, 0)].1
+        if let raw = conflictPopUp.selectedItem?.representedObject as? String,
+           let setting = Preferences.OverwriteModeSetting(rawValue: raw) {
+            Preferences.overwriteMode = setting
+        }
     }
 
     // MARK: - RAR support

@@ -33,7 +33,7 @@ public final class ArchiveSession {
     public var isUntitled: Bool { archiveURL == nil }
 
     public var displayName: String {
-        archiveURL?.lastPathComponent ?? "Untitled Archive"
+        archiveURL?.lastPathComponent ?? L("Untitled Archive")
     }
 
     public var format: ArchiveFormat? {

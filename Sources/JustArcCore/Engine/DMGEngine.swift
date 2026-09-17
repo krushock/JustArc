@@ -93,7 +93,8 @@ public struct DMGEngine: ArchiveEngine {
         }
 
         var info = ArchiveInfo()
-        info.formatName = (try? await formatDescription(archive: archive, password: password)) ?? "Disk Image"
+        info.formatName = (try? await formatDescription(archive: archive, password: password))
+            ?? L("Disk Image")
         info.physicalSize = fileSize(of: archive)
         info.hasEncryptedHeader = (try? await Self.isEncrypted(archive: archive)) ?? false
         return ArchiveListing(info: info, entries: entries)
@@ -478,15 +479,15 @@ public struct DMGEngine: ArchiveEngine {
               let data = result.standardOutput.data(using: .utf8),
               let root = try? PropertyListSerialization.propertyList(from: data, format: nil),
               let dictionary = root as? [String: Any] else {
-            return "Disk Image"
+            return L("Disk Image")
         }
         if let description = dictionary["Format Description"] as? String, !description.isEmpty {
             return description
         }
         if let format = dictionary["Format"] as? String, !format.isEmpty {
-            return "Disk Image (\(format))"
+            return L("Disk Image (%@)", format)
         }
-        return "Disk Image"
+        return L("Disk Image")
     }
 
     /// hdiutil reads either a password or a licence answer from stdin, never both.

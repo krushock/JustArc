@@ -13,12 +13,12 @@ final class SaveOptionsAccessory: NSView {
     private let volumeCombo = NSComboBox()
 
     private let levels: [(String, Int)] = [
-        ("Store (no compression)", 0),
-        ("Fastest", 1),
-        ("Fast", 3),
-        ("Normal", 5),
-        ("Maximum", 7),
-        ("Ultra", 9),
+        (L("Store (no compression)"), 0),
+        (L("Fastest"), 1),
+        (L("Fast"), 3),
+        (L("Normal"), 5),
+        (L("Maximum"), 7),
+        (L("Ultra"), 9),
     ]
 
     var onFormatChange: ((ArchiveFormat) -> Void)?
