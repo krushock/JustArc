@@ -56,20 +56,25 @@ extension ArchiveBrowserViewController {
     }
 
     @objc func extractSelected(_ sender: Any?) {
+        let nodes = selectedNodesForCommand()
         let entries = selectedEntriesForCommand()
         guard !entries.isEmpty else {
             extractAll(nil)
             return
         }
+        // The nodes are what the user picked; the entries are every file underneath them.
         extract(entries: entries,
+                revealing: nodes.map(\.path),
                 label: L("Extracting %d items", entries.count))
     }
 
     @objc func extractAll(_ sender: Any?) {
-        extract(entries: nil, label: L("Extracting %@", session.displayName))
+        extract(entries: nil,
+                revealing: session.tree.root.children.map(\.path),
+                label: L("Extracting %@", session.displayName))
     }
 
-    private func extract(entries: [ArchiveEntry]?, label: String) {
+    private func extract(entries: [ArchiveEntry]?, revealing archivePaths: [String], label: String) {
         guard let archiveURL = session.archiveURL else {
             present(ArchiveError.ioFailure("Save this archive before extracting from it."))
             return
@@ -91,7 +96,9 @@ extension ArchiveBrowserViewController {
                                               progress: progress)
             }
             if done != nil, Preferences.revealInFinder {
-                NSWorkspace.shared.activateFileViewerSelecting([destination])
+                let targets = ExtractionPlan.revealTargets(forArchivePaths: archivePaths,
+                                                           in: destination)
+                NSWorkspace.shared.activateFileViewerSelecting(targets)
             }
         }
     }

@@ -168,3 +168,119 @@ final class ExtractionPlanTests: XCTestCase {
         XCTAssertEqual(plan.destination.lastPathComponent, "Project")
     }
 }
+
+final class RevealTargetsTests: XCTestCase {
+    private var destination: URL!
+
+    override func setUpWithError() throws {
+        destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("reveal-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: destination.appendingPathComponent("payload/docs"), withIntermediateDirectories: true)
+        try "a\n".write(to: destination.appendingPathComponent("payload/readme.txt"),
+                        atomically: true, encoding: .utf8)
+        try "b\n".write(to: destination.appendingPathComponent("payload/docs/notes.txt"),
+                        atomically: true, encoding: .utf8)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: destination)
+    }
+
+    /// The bug: revealing the destination folder selects that folder in its own parent,
+    /// so extracting into Downloads showed the home folder with Downloads highlighted.
+    func testSelectsWhatWasExtractedRatherThanTheFolderItWentInto() {
+        let targets = ExtractionPlan.revealTargets(forArchivePaths: ["payload"], in: destination)
+        XCTAssertEqual(targets.map(\.lastPathComponent), ["payload"])
+        XCTAssertNotEqual(targets, [destination])
+    }
+
+    func testSelectsEachExtractedItemAtItsFinalPath() {
+        let targets = ExtractionPlan.revealTargets(
+            forArchivePaths: ["payload/readme.txt", "payload/docs/notes.txt"], in: destination)
+        XCTAssertEqual(targets.map(\.lastPathComponent), ["readme.txt", "notes.txt"])
+    }
+
+    func testPathsThatAreNotThereAreSkipped() {
+        // The overwrite mode may have renamed a file, so a computed path can be absent.
+        let targets = ExtractionPlan.revealTargets(
+            forArchivePaths: ["payload/missing.txt", "payload/readme.txt"], in: destination)
+        XCTAssertEqual(targets.map(\.lastPathComponent), ["readme.txt"])
+    }
+
+    func testFallsBackToTheDestinationWhenNothingIsFound() {
+        let targets = ExtractionPlan.revealTargets(forArchivePaths: ["nope"], in: destination)
+        XCTAssertEqual(targets, [destination])
+    }
+
+    func testEmptyInputFallsBackToTheDestination() {
+        XCTAssertEqual(ExtractionPlan.revealTargets(forArchivePaths: [], in: destination),
+                       [destination])
+    }
+
+    func testDuplicatesAreCollapsedAndTraversalIsRejected() {
+        let targets = ExtractionPlan.revealTargets(
+            forArchivePaths: ["payload", "payload", "../escape", "/etc/passwd"], in: destination)
+        XCTAssertEqual(targets.count, 1)
+        XCTAssertEqual(targets[0].lastPathComponent, "payload")
+    }
+
+    func testTheSelectionIsCapped() {
+        let many = (0..<10).map { _ in "payload/readme.txt" }
+        XCTAssertEqual(ExtractionPlan.revealTargets(forArchivePaths: many, in: destination,
+                                                    limit: 3).count, 1,
+                       "duplicates collapse before the cap applies")
+
+        let distinct = ["payload", "payload/readme.txt", "payload/docs", "payload/docs/notes.txt"]
+        XCTAssertEqual(ExtractionPlan.revealTargets(forArchivePaths: distinct, in: destination,
+                                                    limit: 2).count, 2)
+    }
+}
+
+/// Checks that extraction and the Finder reveal agree on where files land.
+/// The two are computed separately, so a mismatch is exactly the kind of bug
+/// that shows the wrong thing in Finder.
+final class ExtractThenRevealTests: XCTestCase {
+    private let engine = SevenZipEngine()
+
+    func testExtractAllProducesThePathsTheRevealExpects() async throws {
+        let (root, archive) = try await FixtureBuilder.makeArchive(named: "reveal-all.zip")
+        defer { FixtureBuilder.cleanup(root) }
+
+        let session = ArchiveSession(archiveURL: archive)
+        try await session.load()
+
+        let destination = root.appendingPathComponent("out")
+        try await engine.extract(archive: archive, entries: nil, to: destination, password: nil,
+                                 overwrite: .overwrite, flattenPaths: false,
+                                 cancellation: nil, progress: nil)
+
+        let targets = ExtractionPlan.revealTargets(
+            forArchivePaths: session.tree.root.children.map(\.path), in: destination)
+        XCTAssertEqual(targets.map(\.lastPathComponent), ["payload"])
+        XCTAssertNotEqual(targets, [destination], "Finder would show the parent folder instead")
+        for target in targets {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: target.path), target.path)
+        }
+    }
+
+    func testExtractingASelectionRevealsExactlyThoseItems() async throws {
+        let (root, archive) = try await FixtureBuilder.makeArchive(named: "reveal-some.zip")
+        defer { FixtureBuilder.cleanup(root) }
+
+        let session = ArchiveSession(archiveURL: archive)
+        try await session.load()
+
+        let picked = try XCTUnwrap(session.tree.node(at: "payload/docs"))
+        let destination = root.appendingPathComponent("out-some")
+        try await engine.extract(archive: archive, entries: picked.descendantEntries(),
+                                 to: destination, password: nil, overwrite: .overwrite,
+                                 flattenPaths: false, cancellation: nil, progress: nil)
+
+        let targets = ExtractionPlan.revealTargets(forArchivePaths: [picked.path], in: destination)
+        XCTAssertEqual(targets.map(\.lastPathComponent), ["docs"])
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: destination.appendingPathComponent("payload/docs/notes.txt").path))
+    }
+}
+

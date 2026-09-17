@@ -41,3 +41,31 @@ public struct ExtractionPlan: Sendable {
                               revealTarget: wrapper)
     }
 }
+
+public extension ExtractionPlan {
+    /// The items Finder should select after extracting. Revealing the destination
+    /// folder itself only selects that folder in its own parent, which is not what
+    /// anyone means by "show me what I just extracted".
+    ///
+    /// Paths that are not there are dropped, since the overwrite mode may have renamed
+    /// them, and the destination folder is the fallback when nothing survives.
+    static func revealTargets(forArchivePaths paths: [String],
+                              in destination: URL,
+                              fileManager: FileManager = .default,
+                              limit: Int = 50) -> [URL] {
+        var seen = Set<String>()
+        var targets: [URL] = []
+
+        for path in paths {
+            let normalized = ArchivePath.normalize(path)
+            guard !normalized.isEmpty, PathSafety.isSafe(entryPath: normalized) else { continue }
+            guard seen.insert(normalized).inserted else { continue }
+            let candidate = destination.appendingPathComponent(normalized)
+            guard fileManager.fileExists(atPath: candidate.path) else { continue }
+            targets.append(candidate)
+            if targets.count >= limit { break }
+        }
+
+        return targets.isEmpty ? [destination] : targets
+    }
+}
