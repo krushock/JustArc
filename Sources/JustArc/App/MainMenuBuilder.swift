@@ -90,13 +90,14 @@ enum MainMenuBuilder {
             add(menu, "Extract All…", #selector(ArchiveBrowserViewController.extractAll(_:)), "E",
                 modifiers: [.command, .shift])
             menu.addItem(.separator())
-            add(menu, "Open Selected File", #selector(ArchiveBrowserViewController.openSelectedFile(_:)), "\r",
-                modifiers: [])
-            add(menu, "Quick Look", #selector(ArchiveBrowserViewController.toggleQuickLook(_:)), " ",
-                modifiers: [])
+            // These used to be bare Return and Delete, which claims those keys for the
+            // whole app and stops them working in the filter field and in dialogs.
+            // The list itself handles the unmodified keys; the menu follows Finder.
+            add(menu, "Open Selected File", #selector(ArchiveBrowserViewController.openSelectedFile(_:)),
+                String(UnicodeScalar(NSDownArrowFunctionKey)!))
+            add(menu, "Quick Look", #selector(ArchiveBrowserViewController.toggleQuickLook(_:)), "y")
             menu.addItem(.separator())
-            add(menu, "Delete", #selector(ArchiveBrowserViewController.deleteSelected(_:)), "\u{8}",
-                modifiers: [])
+            add(menu, "Delete", #selector(ArchiveBrowserViewController.deleteSelected(_:)), "\u{8}")
             add(menu, "Rename…", #selector(ArchiveBrowserViewController.renameSelected(_:)), "r")
             menu.addItem(.separator())
             add(menu, "Test Archive", #selector(ArchiveBrowserViewController.testArchive(_:)), "t")

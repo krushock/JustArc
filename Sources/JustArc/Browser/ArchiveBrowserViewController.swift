@@ -16,7 +16,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     private let folderTree = FolderTreeView()
     private let splitView = NSSplitView()
     private let scrollView = NSScrollView()
-    private let table = ArchiveTableView()
+    private let table = ArchiveOutlineView()
     private let listSource = ArchiveListDataSource()
 
     private var currentPath = ""
@@ -81,7 +81,11 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.setDraggingSourceOperationMask([.copy], forLocal: false)
         table.registerForDraggedTypes([.fileURL])
+        table.indentationPerLevel = 14
+        table.indentationMarkerFollowsCell = true
+        table.autoresizesOutlineColumn = false
 
+        var nameColumn: NSTableColumn?
         for column in ArchiveColumn.allCases {
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
             tableColumn.title = column.title
@@ -92,7 +96,10 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
                 tableColumn.headerCell.alignment = .right
             }
             table.addTableColumn(tableColumn)
+            if column == .name { nameColumn = tableColumn }
         }
+        // The disclosure triangles belong next to the names.
+        table.outlineTableColumn = nameColumn
         table.sortDescriptors = [NSSortDescriptor(key: ArchiveColumn.name.rawValue, ascending: true)]
 
         scrollView.documentView = table
@@ -264,13 +271,34 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         refreshChrome()
     }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        // Without this the filter field takes focus and swallows the space bar,
+        // so Quick Look never fires.
+        view.window?.makeFirstResponder(table)
+    }
+
     func reloadList() {
         if session.tree.node(at: currentPath) == nil { currentPath = "" }
         listSource.reload(tree: session.tree, path: currentPath, filter: filterText)
         table.reloadData()
+        expandSingleRootFolder()
+        Diagnostics.log("list: \(session.visibleEntries.count) entries, "
+                        + "\(table.numberOfRows) rows at \"\(currentPath)\"")
         folderTree.reload(tree: session.tree, archiveName: session.displayName)
         folderTree.select(path: currentPath)
         refreshChrome()
+    }
+
+    /// Most archives wrap everything in one folder named after the archive. Showing a
+    /// single collapsed row tells the user nothing, so open it for them.
+    private func expandSingleRootFolder() {
+        guard currentPath.isEmpty, !listSource.isFiltering,
+              table.numberOfRows == 1,
+              let only = table.item(atRow: 0),
+              let node = listSource.node(for: only), node.isDirectory,
+              table.isExpandable(only) else { return }
+        table.expandItem(only)
     }
 
     private func refreshChrome() {
@@ -311,6 +339,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         }
         table.deselectAll(nil)
         reloadList()
+        view.window?.makeFirstResponder(table)
     }
 
     @objc func goUp(_ sender: Any?) {
@@ -334,25 +363,22 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
 
     @objc private func tableDoubleClicked() {
         let row = table.clickedRow
-        guard listSource.rows.indices.contains(row) else { return }
-        switch listSource.rows[row] {
-        case .parentFolder:
+        guard row >= 0, let item = table.item(atRow: row) else { return }
+        guard let node = listSource.node(for: item) else {
             goUp(nil)
-        case .node(let node):
-            if node.isDirectory {
-                navigate(to: node.path)
-            } else {
-                openSelectedFile(nil)
-            }
+            return
+        }
+        if node.isDirectory {
+            navigate(to: node.path)
+        } else {
+            openSelectedFile(nil)
         }
     }
 
     // MARK: - Selection
 
     func selectedNodesForCommand() -> [EntryTree.Node] {
-        table.selectedRowIndexes.compactMap { index in
-            listSource.rows.indices.contains(index) ? listSource.rows[index].node : nil
-        }
+        table.selectedRowIndexes.compactMap { listSource.node(for: table.item(atRow: $0)) }
     }
 
     func selectedEntriesForCommand() -> [ArchiveEntry] {
@@ -361,7 +387,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
 
     @objc func invertSelection(_ sender: Any?) {
         let current = table.selectedRowIndexes
-        let all = IndexSet(integersIn: 0..<listSource.rows.count)
+        let all = IndexSet(integersIn: 0..<table.numberOfRows)
         table.selectRowIndexes(all.subtracting(current), byExtendingSelection: false)
     }
 

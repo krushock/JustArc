@@ -16,8 +16,12 @@ remember it in the login keychain. Hold Option while opening to browse instead.
 Command strip, address row with an archive-wide filter, sortable file list with
 Name, Size, Packed, Type, Modified and CRC32 columns, an optional folder tree, and
 a two-pane status bar. A bare launch opens an empty archive you can drag files into
-and then save. Double-click a file to open it, press Space for Quick Look, drag
-entries out to Finder.
+and then save.
+
+Folders expand in place with a disclosure triangle, the way Finder's list view works,
+and double-clicking one still navigates into it. An archive that wraps everything in a
+single folder opens that folder for you. Space previews the selected file with Quick
+Look, Return opens it, and entries drag straight out to Finder.
 
 **Formats**
 

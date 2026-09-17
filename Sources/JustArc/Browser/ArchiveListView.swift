@@ -1,18 +1,10 @@
 import AppKit
-import UniformTypeIdentifiers
 import JustArcCore
+import UniformTypeIdentifiers
 
-/// A row in the file list. WinRAR puts a ".." row at the top of every subfolder.
-enum ArchiveRow {
-    case parentFolder
-    case node(EntryTree.Node)
-
-    var node: EntryTree.Node? {
-        if case .node(let node) = self { return node }
-        return nil
-    }
-
-    var entry: ArchiveEntry? { node?.entry }
+/// Stands in for the ".." row WinRAR puts at the top of every subfolder.
+final class ParentFolderMarker: NSObject {
+    static let shared = ParentFolderMarker()
 }
 
 enum ArchiveColumn: String, CaseIterable {
@@ -45,9 +37,12 @@ enum ArchiveColumn: String, CaseIterable {
     }
 }
 
-/// Table subclass that routes the keys WinRAR responds to: Return opens,
-/// Space previews, Delete removes, Backspace goes up a level.
-final class ArchiveTableView: NSTableView {
+/// Outline view so folders can be expanded in place, the way Finder's list view works,
+/// while double-clicking still navigates into them.
+///
+/// Routes the keys people expect from a file list: Return opens, Space previews,
+/// Delete removes, and Command-Delete goes up a level.
+final class ArchiveOutlineView: NSOutlineView {
     var onOpen: (() -> Void)?
     var onPreview: (() -> Void)?
     var onDelete: (() -> Void)?
@@ -59,24 +54,33 @@ final class ArchiveTableView: NSTableView {
             onOpen?()
         case 49: // Space
             onPreview?()
-        case 51: // Delete
-            if event.modifierFlags.contains(.command) { onGoUp?() } else { onDelete?() }
-        case 117: // Forward delete
+        case 51, 117: // Delete, forward delete
             onDelete?()
+        case 126 where event.modifierFlags.contains(.command): // Command-Up
+            onGoUp?()
         default:
             super.keyDown(with: event)
         }
     }
 
+    /// Without this the outline view swallows clicks meant to change the selection
+    /// in cells that contain controls.
     override func validateProposedFirstResponder(_ responder: NSResponder,
                                                  for event: NSEvent?) -> Bool {
         true
     }
 }
 
-/// Builds the rows for the current folder and renders each cell.
-final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    private(set) var rows: [ArchiveRow] = []
+/// Supplies the rows for the current folder and renders each cell.
+final class ArchiveListDataSource: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    private var tree = EntryTree(entries: [])
+    private var currentPath = ""
+    private var filterText = ""
+    private(set) var rootItems: [Any] = []
+
+    /// Sorting a node's children on every outline callback would be wasteful, so the
+    /// result is kept until the next reload.
+    private var sortedChildren: [ObjectIdentifier: [EntryTree.Node]] = [:]
     private var iconCache: [String: NSImage] = [:]
 
     var sortColumn: ArchiveColumn = .name
@@ -87,29 +91,53 @@ final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewD
     var onDropFiles: (([URL]) -> Void)?
     var promiseProvider: ((EntryTree.Node) -> NSFilePromiseProvider?)?
 
-    /// Recomputes the visible rows for a folder, applying the filter text.
-    func reload(tree: EntryTree, path: String, filter: String) {
-        var children = tree.children(at: path)
+    /// True while a filter narrows the list, when a flat list of matches is clearer
+    /// than a tree the user would have to expand to see anything.
+    var isFiltering: Bool {
+        !filterText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
+    func reload(tree: EntryTree, path: String, filter: String) {
+        self.tree = tree
+        self.currentPath = path
+        self.filterText = filter
+        sortedChildren.removeAll()
+
+        var nodes: [EntryTree.Node]
         let trimmed = filter.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            if path.isEmpty {
-                // An empty path means "search the whole archive", like WinRAR's Find.
-                children = tree.root.descendantNodes().filter {
-                    $0.name.localizedCaseInsensitiveContains(trimmed)
-                }
-            } else {
-                children = children.filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
+        if trimmed.isEmpty {
+            nodes = tree.children(at: path)
+        } else if path.isEmpty {
+            // An empty path means "search the whole archive", like WinRAR's Find.
+            nodes = tree.root.descendantNodes().filter {
+                $0.name.localizedCaseInsensitiveContains(trimmed)
+            }
+        } else {
+            nodes = tree.children(at: path).filter {
+                $0.name.localizedCaseInsensitiveContains(trimmed)
             }
         }
 
-        children.sort(by: comparator)
-        rows = children.map { ArchiveRow.node($0) }
-        if !path.isEmpty { rows.insert(.parentFolder, at: 0) }
+        nodes.sort(by: comparator)
+        rootItems = nodes.map { $0 as Any }
+        if !path.isEmpty { rootItems.insert(ParentFolderMarker.shared, at: 0) }
+    }
+
+    func node(for item: Any?) -> EntryTree.Node? {
+        item as? EntryTree.Node
+    }
+
+    private func children(of node: EntryTree.Node) -> [EntryTree.Node] {
+        if isFiltering { return [] }
+        let key = ObjectIdentifier(node)
+        if let cached = sortedChildren[key] { return cached }
+        let sorted = node.children.sorted(by: comparator)
+        sortedChildren[key] = sorted
+        return sorted
     }
 
     private func comparator(_ lhs: EntryTree.Node, _ rhs: EntryTree.Node) -> Bool {
-        // Folders always lead, exactly as WinRAR sorts them.
+        // Folders always lead, exactly as WinRAR and Finder sort them.
         if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
         let ascending = sortAscending
         func apply(_ result: Bool) -> Bool { ascending ? result : !result }
@@ -133,25 +161,41 @@ final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewD
         }
     }
 
-    // MARK: - NSTableViewDataSource
+    // MARK: - NSOutlineViewDataSource
 
-    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else { return rootItems.count }
+        guard let node = node(for: item) else { return 0 }
+        return children(of: node).count
+    }
 
-    func tableView(_ tableView: NSTableView,
-                   viewFor tableColumn: NSTableColumn?,
-                   row: Int) -> NSView? {
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        guard let item else { return rootItems[index] }
+        guard let node = node(for: item) else { return ParentFolderMarker.shared }
+        return children(of: node)[index]
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        guard let node = node(for: item), node.isDirectory else { return false }
+        return !children(of: node).isEmpty
+    }
+
+    // MARK: - NSOutlineViewDelegate
+
+    func outlineView(_ outlineView: NSOutlineView,
+                     viewFor tableColumn: NSTableColumn?,
+                     item: Any) -> NSView? {
         guard let identifier = tableColumn?.identifier.rawValue,
-              let column = ArchiveColumn(rawValue: identifier),
-              rows.indices.contains(row) else { return nil }
+              let column = ArchiveColumn(rawValue: identifier) else { return nil }
 
-        let cell = makeCell(tableView: tableView, column: column)
-        configure(cell: cell, column: column, row: rows[row])
+        let cell = makeCell(outlineView: outlineView, column: column)
+        configure(cell: cell, column: column, item: item)
         return cell
     }
 
-    private func makeCell(tableView: NSTableView, column: ArchiveColumn) -> NSTableCellView {
+    private func makeCell(outlineView: NSOutlineView, column: ArchiveColumn) -> NSTableCellView {
         let identifier = NSUserInterfaceItemIdentifier("cell.\(column.rawValue)")
-        if let reused = tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView {
+        if let reused = outlineView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView {
             return reused
         }
 
@@ -193,9 +237,8 @@ final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewD
         return cell
     }
 
-    private func configure(cell: NSTableCellView, column: ArchiveColumn, row: ArchiveRow) {
-        switch row {
-        case .parentFolder:
+    private func configure(cell: NSTableCellView, column: ArchiveColumn, item: Any) {
+        guard let node = node(for: item) else {
             cell.textField?.stringValue = column == .name ? ".." : ""
             cell.textField?.textColor = .secondaryLabelColor
             if column == .name {
@@ -203,27 +246,70 @@ final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewD
                                                 accessibilityDescription: L("Enclosing folder"))
                 cell.imageView?.contentTintColor = .secondaryLabelColor
             }
-
-        case .node(let node):
-            cell.textField?.textColor = .labelColor
-            switch column {
-            case .name:
-                cell.textField?.stringValue = node.name
-                cell.imageView?.contentTintColor = nil
-                cell.imageView?.image = icon(for: node)
-            case .size:
-                cell.textField?.stringValue = Formatting.exactBytes(node.totalSize)
-            case .packed:
-                cell.textField?.stringValue = node.totalPacked > 0
-                    ? Formatting.exactBytes(node.totalPacked) : ""
-            case .type:
-                cell.textField?.stringValue = Self.typeDescription(for: node)
-            case .modified:
-                cell.textField?.stringValue = Formatting.date(node.entry?.modified)
-            case .crc:
-                cell.textField?.stringValue = node.entry?.crc ?? ""
-            }
+            return
         }
+
+        cell.textField?.textColor = .labelColor
+        switch column {
+        case .name:
+            // While filtering the whole archive, the bare name is ambiguous, so show
+            // where the match actually lives.
+            cell.textField?.stringValue = isFiltering && currentPath.isEmpty ? node.path : node.name
+            cell.imageView?.contentTintColor = nil
+            cell.imageView?.image = icon(for: node)
+        case .size:
+            cell.textField?.stringValue = Formatting.exactBytes(node.totalSize)
+        case .packed:
+            cell.textField?.stringValue = node.totalPacked > 0
+                ? Formatting.exactBytes(node.totalPacked) : ""
+        case .type:
+            cell.textField?.stringValue = Self.typeDescription(for: node)
+        case .modified:
+            cell.textField?.stringValue = Formatting.date(node.entry?.modified)
+        case .crc:
+            cell.textField?.stringValue = node.entry?.crc ?? ""
+        }
+    }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        onSelectionChange?()
+    }
+
+    func outlineView(_ outlineView: NSOutlineView,
+                     sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard let descriptor = outlineView.sortDescriptors.first,
+              let key = descriptor.key,
+              let column = ArchiveColumn(rawValue: key) else { return }
+        onSortChange?(column, descriptor.ascending)
+    }
+
+    // MARK: - Dragging
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        guard let node = node(for: item) else { return nil }
+        return promiseProvider?(node)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView,
+                     validateDrop info: NSDraggingInfo,
+                     proposedItem item: Any?,
+                     proposedChildIndex index: Int) -> NSDragOperation {
+        // Only accept files coming from outside the archive window.
+        guard (info.draggingSource as? NSOutlineView) !== outlineView else { return [] }
+        outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        return .copy
+    }
+
+    func outlineView(_ outlineView: NSOutlineView,
+                     acceptDrop info: NSDraggingInfo,
+                     item: Any?,
+                     childIndex index: Int) -> Bool {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                                            options: options) as? [URL],
+              !urls.isEmpty else { return false }
+        onDropFiles?(urls)
+        return true
     }
 
     // MARK: - Presentation helpers
@@ -253,47 +339,6 @@ final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewD
         image.size = NSSize(width: 16, height: 16)
         iconCache[key] = image
         return image
-    }
-
-    // MARK: - Selection, sorting and dragging
-
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        onSelectionChange?()
-    }
-
-    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard let descriptor = tableView.sortDescriptors.first,
-              let key = descriptor.key,
-              let column = ArchiveColumn(rawValue: key) else { return }
-        onSortChange?(column, descriptor.ascending)
-    }
-
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        guard rows.indices.contains(row), let node = rows[row].node else { return nil }
-        return promiseProvider?(node)
-    }
-
-    func tableView(_ tableView: NSTableView,
-                   validateDrop info: NSDraggingInfo,
-                   proposedRow row: Int,
-                   proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        guard info.draggingSource == nil || (info.draggingSource as? NSTableView) !== tableView else {
-            return []
-        }
-        tableView.setDropRow(-1, dropOperation: .on)
-        return .copy
-    }
-
-    func tableView(_ tableView: NSTableView,
-                   acceptDrop info: NSDraggingInfo,
-                   row: Int,
-                   dropOperation: NSTableView.DropOperation) -> Bool {
-        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
-        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-                                                            options: options) as? [URL],
-              !urls.isEmpty else { return false }
-        onDropFiles?(urls)
-        return true
     }
 }
 
