@@ -27,6 +27,15 @@
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
 
+	<key>SUFeedURL</key>
+	<string>https://justarc.app/appcast.xml</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<!-- SUPublicEDKey is generated per developer with Sparkle's generate_keys and must
+	     be added before shipping, otherwise Sparkle will refuse to install updates. -->
+
 	<key>NSServices</key>
 	<array>
 		<dict>

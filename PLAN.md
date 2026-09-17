@@ -87,9 +87,17 @@ Declare `CFBundleDocumentTypes` (Viewer for read-only, Editor for writable) for:
 | M0 | Skeleton | **done** | SwiftPM package, JustArcCore, bundled 7zz 25.01 universal, list/extract/test/create/add/delete/rename, 42 tests |
 | M1 | Quick Extract MVP | **done** | Double-click → extract → quit; password sheet with keychain option; progress/cancel; prefs pane; smart wrapper folders |
 | M2 | Browser read-only | **done** | Window, folder tree, sortable list, path bar, filter, Quick Look, open single file, extract selected/all, drag-out, dmg via hdiutil |
-| M3 | Create & edit | **partly done** | Empty archive window, drag-in/add/delete/rename, Save and Save As with format/level/password/encrypt-names all work. Still missing: split volumes in the Save panel, external rar writing, "update edited file" |
-| M4 | Polish & ship | not started | Finder Services/Quick Actions, encoding override UI, Sparkle, Developer ID signing, notarized DMG, localisation |
+| M3 | Create & edit | **done** | Empty archive window, drag-in/add/delete/rename, Save and Save As with format, level, password, encrypted names and split volumes. RAR writing through RARLAB's tool, downloadable from Settings. Edited files are offered back to the archive |
+| M4 | Polish & ship | **done, except notarization** | Four Finder Services, filename encoding menu, Sparkle wired and embedded, hardened-runtime signing, installer disk image, English and Russian |
 | M5 | Later | not started | XADMaster for sit/legacy, in-process 7z engine (no CLI passwords), App Store variant, Shortcuts actions |
+
+**What is not verified.** Notarization needs a Developer ID Application certificate, and
+this machine has only an Apple Development one. The release script runs end to end
+otherwise: hardened runtime, entitlements, and a deep signature over the app, the 7-Zip
+helper and the Sparkle framework, all confirmed with `codesign --verify --deep --strict`.
+Sparkle is embedded and starts, but no appcast is published, so there is nothing to find.
+Quick Actions proper would need an app extension target, which a hand-assembled bundle
+cannot produce; the Services menu covers the same ground.
 
 **Note on the dmg engine.** `DMGEngine` attaches images read-only through `hdiutil`
 at a private mount root and treats the mounted filesystem as the archive, which is the

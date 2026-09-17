@@ -43,6 +43,8 @@ enum MainMenuBuilder {
         submenu("JustArc") { menu in
             add(menu, "About JustArc", #selector(AppDelegate.showAbout(_:)))
             menu.addItem(.separator())
+            add(menu, "Check for Updates…", #selector(AppDelegate.checkForUpdates(_:)))
+            menu.addItem(.separator())
             add(menu, "Settings…", #selector(AppDelegate.showPreferences(_:)), ",")
             menu.addItem(.separator())
             add(menu, "Hide JustArc", #selector(NSApplication.hide(_:)), "h")

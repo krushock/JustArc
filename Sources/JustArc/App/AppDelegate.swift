@@ -2,12 +2,13 @@ import AppKit
 import JustArcCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let quickExtract = QuickExtractCoordinator()
     private var browserControllers: [ArchiveWindowController] = []
     private var didReceiveOpenRequest = false
     private var preferencesController: PreferencesWindowController?
     private var servicesProvider: ServicesProvider?
+    private let updates = UpdateController()
 
     // MARK: - Lifecycle
 
@@ -165,6 +166,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         preferencesController?.showWindow(nil)
         preferencesController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func checkForUpdates(_ sender: Any?) {
+        updates.checkForUpdates(sender)
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(checkForUpdates(_:)) {
+            return updates.validate(menuItem)
+        }
+        return true
     }
 
     @objc func showAbout(_ sender: Any?) {

@@ -25,12 +25,17 @@ entries out to Finder.
 |---|---|---|
 | zip, 7z, tar, tar.gz, tar.bz2, tar.xz, tar.zst | yes | yes |
 | gz, bz2, xz, zst | yes | yes |
-| rar, rar5 | yes | only with RARLAB's `rar` installed |
+| rar, rar5 | yes | yes, after a one-click download of RARLAB's tool |
 | iso, cab, xar, pkg, cpio, deb, rpm, wim, lzh, arj, msi, chm | yes | no |
 | dmg | yes, via hdiutil | yes, zlib or LZFSE, optional AES-256 |
 
 Passwords are supported for zip (ZipCrypto and AES-256), 7z including encrypted
 headers, rar, and encrypted disk images.
+
+**RAR writing** needs RARLAB's own tool, which cannot be bundled with the app. Settings
+has a Download RAR button that fetches the official macOS build, checks that it runs and
+installs it under Application Support. An existing copy elsewhere can be chosen instead.
+Reading RAR never needs it.
 
 **Disk images** are attached read-only at a private mount point, so you see the real
 filesystem rather than the UDIF container. The mount is held for as long as the window
@@ -62,6 +67,17 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 - `Vendor/7zz` — the 7-Zip binary, universal, under the GNU LGPL. Refresh it with
   `Scripts/fetch-7zz.sh`.
 
+## Other things it does
+
+- **Finder Services.** Compress, compress choosing a format, extract, and open, all from
+  the Finder context menu.
+- **Edited files go back in.** Open a file out of an archive, edit it in another app, and
+  JustArc offers to update the archive when you switch back.
+- **Split volumes.** Pick a preset in the Save panel or type a size such as `1.5g`.
+- **Filename encodings.** Zip archives written before UTF-8 was common can be re-read as
+  CP866, Shift JIS and the rest.
+- **English and Russian.** The interface follows the system language.
+
 ## Debugging
 
 The app takes file paths on the command line, which behave exactly like files opened
@@ -73,10 +89,32 @@ JUSTARC_VERBOSE=1 ./build/JustArc.app/Contents/MacOS/JustArc ~/Downloads/thing.d
 
 Engine logging also goes to the unified log under the `com.justarc.JustArc` subsystem.
 
+## Releasing
+
+```bash
+SIGN_IDENTITY="Developer ID Application: You (TEAMID)" NOTARY_PROFILE=justarc \
+  ./Scripts/release.sh 0.2.0
+```
+
+That builds, signs with the hardened runtime, packages a disk image laid out as an
+installer, notarizes and staples. Create the notary profile once with
+`xcrun notarytool store-credentials`. With no identity it signs ad-hoc, which is fine
+locally and will not pass Gatekeeper anywhere else.
+
+Updates go through Sparkle. Before the first release, generate a key pair with
+`.build/artifacts/sparkle/Sparkle/bin/generate_keys`, put the public key in `Info.plist`
+as `SUPublicEDKey`, and publish an appcast at the `SUFeedURL`. The release script warns
+when the key is missing, and Sparkle refuses to install an unsigned update.
+
 ## Known gaps
 
-- Split volumes can be read but the Save panel does not offer a volume size yet.
-- RAR writing needs RARLAB's `rar` on the system; nothing ships with the app.
+- Notarization is untested here, because this machine has only an Apple Development
+  certificate. Everything up to it is verified: hardened runtime, entitlements, and a
+  deep signature over the app, the 7-Zip helper and the Sparkle framework.
+- No appcast is published yet, so Check for Updates has nothing to find.
+- StuffIt and other legacy formats are not read. That needs XADMaster.
+- Passwords reach 7-Zip and RAR as command line arguments, so they are briefly visible
+  to other processes of the same user. Moving to an in-process 7-Zip library would fix
+  this and is the main reason to do it.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.
-- No code signing, notarization or updater. `build-app.sh` signs ad-hoc for local use.

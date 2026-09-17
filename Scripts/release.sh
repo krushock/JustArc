@@ -38,7 +38,26 @@ else
   HARDENED=(--options runtime --timestamp)
 fi
 
-# Nested code is signed before the bundle that contains it.
+if [ "$IDENTITY" != "-" ] && ! /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' \
+     "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+  echo "warning: SUPublicEDKey is not set, so Sparkle will refuse to install updates." >&2
+  echo "         Generate a key pair with .build/artifacts/sparkle/Sparkle/bin/generate_keys" >&2
+fi
+
+# Nested code is signed from the inside out: the deepest bundles first.
+SPARKLE_FW="$APP/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPARKLE_FW" ]; then
+  for nested in \
+    "$SPARKLE_FW/Versions/B/XPCServices/Downloader.xpc" \
+    "$SPARKLE_FW/Versions/B/XPCServices/Installer.xpc" \
+    "$SPARKLE_FW/Versions/B/Updater.app" \
+    "$SPARKLE_FW/Versions/B/Autoupdate"; do
+    [ -e "$nested" ] || continue
+    codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$nested"
+  done
+  codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$SPARKLE_FW"
+fi
+
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APP/Contents/Helpers/7zz"
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} \
   --entitlements "$ROOT/Sources/JustArc/Resources/JustArc.entitlements" \
