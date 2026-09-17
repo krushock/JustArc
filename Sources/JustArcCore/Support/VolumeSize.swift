@@ -15,11 +15,11 @@ public enum VolumeSize {
     }
 
     public static let presets: [Preset] = [
-        Preset(title: "Do not split", spec: nil),
-        Preset(title: "100 MB", spec: "100m"),
-        Preset(title: "700 MB (CD)", spec: "700m"),
-        Preset(title: "1 GB", spec: "1g"),
-        Preset(title: "4480 MB (DVD)", spec: "4480m"),
+        Preset(title: L("Do not split"), spec: nil),
+        Preset(title: L("100 MB"), spec: "100m"),
+        Preset(title: L("700 MB (CD)"), spec: "700m"),
+        Preset(title: L("1 GB"), spec: "1g"),
+        Preset(title: L("4480 MB (DVD)"), spec: "4480m"),
     ]
 
     /// Accepts "100m", "100 MB", "1.5 GB", "700" and so on. Returns nil when the text

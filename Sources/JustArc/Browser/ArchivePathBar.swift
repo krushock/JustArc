@@ -27,18 +27,18 @@ final class ArchivePathBar: NSView {
     }
 
     private func build() {
-        upButton.image = NSImage(systemSymbolName: "arrow.up", accessibilityDescription: "Enclosing folder")
+        upButton.image = NSImage(systemSymbolName: "arrow.up", accessibilityDescription: L("Enclosing folder"))
         upButton.bezelStyle = .texturedRounded
         upButton.target = self
         upButton.action = #selector(goUp)
-        upButton.toolTip = "Go to the enclosing folder"
+        upButton.toolTip = L("Go to the enclosing folder")
         upButton.widthAnchor.constraint(equalToConstant: 30).isActive = true
 
         pathButton.target = self
         pathButton.action = #selector(pathSelected)
         pathButton.bezelStyle = .texturedRounded
 
-        filterField.placeholderString = "Filter"
+        filterField.placeholderString = L("Filter")
         filterField.target = self
         filterField.action = #selector(filterChanged)
         filterField.sendsWholeSearchString = false

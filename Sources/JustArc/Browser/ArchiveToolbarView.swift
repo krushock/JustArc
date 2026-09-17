@@ -1,4 +1,5 @@
 import AppKit
+import JustArcCore
 
 /// WinRAR's command strip: large icons with the command name underneath,
 /// grouped by a thin vertical divider.
@@ -8,15 +9,15 @@ final class ArchiveToolbarView: NSView {
 
         var title: String {
             switch self {
-            case .add: return "Add"
-            case .extractTo: return "Extract To"
-            case .test: return "Test"
-            case .view: return "View"
-            case .delete: return "Delete"
-            case .find: return "Find"
-            case .info: return "Info"
-            case .password: return "Password"
-            case .save: return "Save"
+            case .add: return L("Add")
+            case .extractTo: return L("Extract To")
+            case .test: return L("Test")
+            case .view: return L("View")
+            case .delete: return L("Delete")
+            case .find: return L("Find")
+            case .info: return L("Info")
+            case .password: return L("Password")
+            case .save: return L("Save")
             }
         }
 

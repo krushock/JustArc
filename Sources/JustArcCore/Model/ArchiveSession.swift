@@ -232,7 +232,7 @@ public final class ArchiveSession {
 
         roots.append(contentsOf: stagedRoots)
         guard !roots.isEmpty else {
-            throw ArchiveError.ioFailure("There is nothing to save. Add files to the archive first.")
+            throw ArchiveError.ioFailure(L("There is nothing to save. Add files to the archive first."))
         }
 
         let temporaryArchive = scratch.deletingLastPathComponent()

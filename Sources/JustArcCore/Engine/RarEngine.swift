@@ -9,7 +9,7 @@ public struct RarEngine: ArchiveEngine {
     public init() {}
 
     public static let installHint =
-        "Install RARLAB's command line tool, then point JustArc at it in Settings."
+        L("Install RARLAB's command line tool, then point JustArc at it in Settings.")
 
     // MARK: - Reading, delegated to 7-Zip
 

@@ -189,12 +189,6 @@ final class SevenZipEngineTests: XCTestCase {
     }
 }
 
-extension ArchiveError: Equatable {
-    public static func == (lhs: ArchiveError, rhs: ArchiveError) -> Bool {
-        lhs.localizedDescription == rhs.localizedDescription
-    }
-}
-
 private final class ProgressBox: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Double = -1

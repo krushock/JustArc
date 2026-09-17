@@ -6,24 +6,24 @@ import UniformTypeIdentifiers
 @MainActor
 final class PreferencesWindowController: NSWindowController {
     private let destinationPopUp = NSPopUpButton()
-    private let smartFolderBox = NSButton(checkboxWithTitle: "Create a folder when the archive has loose files",
+    private let smartFolderBox = NSButton(checkboxWithTitle: L("Create a folder when the archive has loose files"),
                                           target: nil, action: nil)
-    private let revealBox = NSButton(checkboxWithTitle: "Reveal the result in Finder", target: nil, action: nil)
-    private let trashBox = NSButton(checkboxWithTitle: "Move the archive to the Trash afterwards",
+    private let revealBox = NSButton(checkboxWithTitle: L("Reveal the result in Finder"), target: nil, action: nil)
+    private let trashBox = NSButton(checkboxWithTitle: L("Move the archive to the Trash afterwards"),
                                     target: nil, action: nil)
-    private let quitBox = NSButton(checkboxWithTitle: "Quit after extracting", target: nil, action: nil)
-    private let browseBox = NSButton(checkboxWithTitle: "Open archives in a window instead of extracting",
+    private let quitBox = NSButton(checkboxWithTitle: L("Quit after extracting"), target: nil, action: nil)
+    private let browseBox = NSButton(checkboxWithTitle: L("Open archives in a window instead of extracting"),
                                      target: nil, action: nil)
-    private let metadataBox = NSButton(checkboxWithTitle: "Skip .DS_Store and resource forks when compressing",
+    private let metadataBox = NSButton(checkboxWithTitle: L("Skip .DS_Store and resource forks when compressing"),
                                        target: nil, action: nil)
     private let formatPopUp = NSPopUpButton()
     private let levelPopUp = NSPopUpButton()
 
     private let rarStatusLabel = NSTextField(labelWithString: "")
     private let rarProgress = NSProgressIndicator()
-    private let rarDownloadButton = NSButton(title: "Download RAR…", target: nil, action: nil)
-    private let rarChooseButton = NSButton(title: "Choose…", target: nil, action: nil)
-    private let rarRemoveButton = NSButton(title: "Remove", target: nil, action: nil)
+    private let rarDownloadButton = NSButton(title: L("Download RAR…"), target: nil, action: nil)
+    private let rarChooseButton = NSButton(title: L("Choose…"), target: nil, action: nil)
+    private let rarRemoveButton = NSButton(title: L("Remove"), target: nil, action: nil)
     private let rarNoteLabel = NSTextField(wrappingLabelWithString: "")
 
     private let levels: [(String, Int)] = [
@@ -35,7 +35,7 @@ final class PreferencesWindowController: NSWindowController {
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
-        window.title = "JustArc Settings"
+        window.title = L("JustArc Settings")
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -87,11 +87,7 @@ final class PreferencesWindowController: NSWindowController {
         rarStatusLabel.font = .systemFont(ofSize: 12)
         rarNoteLabel.font = .systemFont(ofSize: 11)
         rarNoteLabel.textColor = .secondaryLabelColor
-        rarNoteLabel.stringValue = """
-        Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot \
-        include. The download comes from rarlab.com and is a trial version licensed by \
-        RARLAB, not by JustArc. It is installed in Application Support, not inside the app.
-        """
+        rarNoteLabel.stringValue = L("Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is installed in Application Support, not inside the app.")
         rarNoteLabel.preferredMaxLayoutWidth = 380
 
         let statusRow = NSStackView(views: [rarProgress, rarStatusLabel])
@@ -103,19 +99,19 @@ final class PreferencesWindowController: NSWindowController {
         rarButtons.spacing = 8
 
         let grid = NSGridView(views: [
-            [heading("When you double-click an archive")],
-            [caption("Extract to:"), destinationPopUp],
+            [heading(L("When you double-click an archive"))],
+            [caption(L("Extract to:")), destinationPopUp],
             [NSView(), smartFolderBox],
             [NSView(), revealBox],
             [NSView(), trashBox],
             [NSView(), quitBox],
             [NSView(), browseBox],
-            [heading("New archives")],
-            [caption("Format:"), formatPopUp],
-            [caption("Compression:"), levelPopUp],
+            [heading(L("New archives"))],
+            [caption(L("Format:")), formatPopUp],
+            [caption(L("Compression:")), levelPopUp],
             [NSView(), metadataBox],
-            [heading("RAR support")],
-            [caption("Status:"), statusRow],
+            [heading(L("RAR support"))],
+            [caption(L("Status:")), statusRow],
             [NSView(), rarButtons],
             [NSView(), rarNoteLabel],
         ])
@@ -182,19 +178,20 @@ final class PreferencesWindowController: NSWindowController {
         rarRemoveButton.isEnabled = RarToolInstaller.isManagedInstall
             || (UserDefaults.standard.string(forKey: "RARToolPath")?.isEmpty == false)
         rarDownloadButton.title = installed && RarToolInstaller.isManagedInstall
-            ? "Update RAR…" : "Download RAR…"
+            ? L("Update RAR…") : L("Download RAR…")
 
         guard installed, let tool = EngineLocator.externalRAR else {
-            rarStatusLabel.stringValue = "Not installed — RAR archives are read-only."
+            rarStatusLabel.stringValue = L("Not installed — RAR archives are read-only.")
             rarStatusLabel.textColor = .secondaryLabelColor
             return
         }
-        rarStatusLabel.stringValue = "Checking…"
+        rarStatusLabel.stringValue = L("Checking…")
         rarStatusLabel.textColor = .secondaryLabelColor
         Task {
             let version = await RarToolInstaller.installedVersion()
-            let where_ = RarToolInstaller.isManagedInstall ? "installed by JustArc" : tool.path
-            rarStatusLabel.stringValue = version.map { "RAR \($0) — \(where_)" } ?? "Found at \(tool.path)"
+            let location = RarToolInstaller.isManagedInstall ? L("installed by JustArc") : tool.path
+            rarStatusLabel.stringValue = version.map { L("RAR %@ — %@", $0, location) }
+                ?? L("Found at %@", tool.path)
             rarStatusLabel.textColor = .labelColor
         }
     }
@@ -203,7 +200,7 @@ final class PreferencesWindowController: NSWindowController {
         rarDownloadButton.isEnabled = false
         rarChooseButton.isEnabled = false
         rarProgress.startAnimation(nil)
-        rarStatusLabel.stringValue = "Downloading from rarlab.com…"
+        rarStatusLabel.stringValue = L("Downloading from rarlab.com…")
         rarStatusLabel.textColor = .secondaryLabelColor
 
         Task {
@@ -217,21 +214,21 @@ final class PreferencesWindowController: NSWindowController {
                     Task { @MainActor in
                         guard let fraction else { return }
                         self.rarStatusLabel.stringValue =
-                            "Downloading from rarlab.com… \(Formatting.percent(fraction))"
+                            L("Downloading from rarlab.com… %@", Formatting.percent(fraction))
                     }
                 }
-                rarStatusLabel.stringValue = "RAR \(installation.version) installed."
+                rarStatusLabel.stringValue = L("RAR %@ installed.", installation.version)
                 rarStatusLabel.textColor = .labelColor
                 refreshRarSection()
                 showLicenceNotice(version: installation.version)
             } catch {
-                rarStatusLabel.stringValue = "Not installed — RAR archives are read-only."
+                rarStatusLabel.stringValue = L("Not installed — RAR archives are read-only.")
                 rarStatusLabel.textColor = .secondaryLabelColor
                 let alert = NSAlert()
                 alert.alertStyle = .warning
-                alert.messageText = "JustArc could not install the RAR tools."
+                alert.messageText = L("JustArc could not install the RAR tools.")
                 alert.informativeText = error.localizedDescription
-                alert.addButton(withTitle: "OK")
+                alert.addButton(withTitle: L("OK"))
                 if let window { await alert.beginSheetModal(for: window) }
             }
         }
@@ -239,13 +236,10 @@ final class PreferencesWindowController: NSWindowController {
 
     private func showLicenceNotice(version: String) {
         let alert = NSAlert()
-        alert.messageText = "RAR \(version) is ready."
-        alert.informativeText = """
-        You can now save RAR archives. These tools come from RARLAB and are a trial \
-        version under their own licence, which JustArc does not grant.
-        """
-        alert.addButton(withTitle: "OK")
-        if RarToolInstaller.licenseURL != nil { alert.addButton(withTitle: "Read Licence") }
+        alert.messageText = L("RAR %@ is ready.", version)
+        alert.informativeText = L("You can now save RAR archives. These tools come from RARLAB and are a trial version under their own licence, which JustArc does not grant.")
+        alert.addButton(withTitle: L("OK"))
+        if RarToolInstaller.licenseURL != nil { alert.addButton(withTitle: L("Read Licence")) }
         let response = alert.runModal()
         if response == .alertSecondButtonReturn, let licence = RarToolInstaller.licenseURL {
             NSWorkspace.shared.open(licence)
@@ -257,14 +251,14 @@ final class PreferencesWindowController: NSWindowController {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the rar command line tool."
-        panel.prompt = "Use"
+        panel.message = L("Choose the rar command line tool.")
+        panel.prompt = L("Use")
         panel.directoryURL = URL(fileURLWithPath: "/usr/local/bin")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard FileManager.default.isExecutableFile(atPath: url.path) else {
             let alert = NSAlert()
-            alert.messageText = "\(url.lastPathComponent) is not an executable."
-            alert.addButton(withTitle: "OK")
+            alert.messageText = L("%@ is not an executable.", url.lastPathComponent)
+            alert.addButton(withTitle: L("OK"))
             alert.runModal()
             return
         }

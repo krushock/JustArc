@@ -20,11 +20,11 @@ enum ArchiveColumn: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .name: return "Name"
-        case .size: return "Size"
-        case .packed: return "Packed"
-        case .type: return "Type"
-        case .modified: return "Modified"
+        case .name: return L("Name")
+        case .size: return L("Size")
+        case .packed: return L("Packed")
+        case .type: return L("Type")
+        case .modified: return L("Modified")
         case .crc: return "CRC32"
         }
     }
@@ -200,7 +200,7 @@ final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewD
             cell.textField?.textColor = .secondaryLabelColor
             if column == .name {
                 cell.imageView?.image = NSImage(systemSymbolName: "arrow.turn.left.up",
-                                                accessibilityDescription: "Enclosing folder")
+                                                accessibilityDescription: L("Enclosing folder"))
                 cell.imageView?.contentTintColor = .secondaryLabelColor
             }
 
@@ -229,13 +229,13 @@ final class ArchiveListDataSource: NSObject, NSTableViewDataSource, NSTableViewD
     // MARK: - Presentation helpers
 
     static func typeDescription(for node: EntryTree.Node) -> String {
-        if node.isDirectory { return "Folder" }
+        if node.isDirectory { return L("Folder") }
         let ext = (node.name as NSString).pathExtension
-        guard !ext.isEmpty else { return "Document" }
+        guard !ext.isEmpty else { return L("Document") }
         if let type = UTType(filenameExtension: ext), let description = type.localizedDescription {
             return description.prefix(1).uppercased() + description.dropFirst()
         }
-        return "\(ext.uppercased()) file"
+        return L("%@ file", ext.uppercased())
     }
 
     private func icon(for node: EntryTree.Node) -> NSImage {

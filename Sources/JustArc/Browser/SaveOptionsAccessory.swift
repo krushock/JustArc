@@ -7,8 +7,8 @@ final class SaveOptionsAccessory: NSView {
     private let formatPopUp = NSPopUpButton()
     private let levelPopUp = NSPopUpButton()
     private let passwordField = NSSecureTextField()
-    private let encryptNamesBox = NSButton(checkboxWithTitle: "Encrypt file names", target: nil, action: nil)
-    private let excludeMetadataBox = NSButton(checkboxWithTitle: "Skip .DS_Store and resource forks",
+    private let encryptNamesBox = NSButton(checkboxWithTitle: L("Encrypt file names"), target: nil, action: nil)
+    private let excludeMetadataBox = NSButton(checkboxWithTitle: L("Skip .DS_Store and resource forks"),
                                               target: nil, action: nil)
     private let volumeCombo = NSComboBox()
 
@@ -60,22 +60,22 @@ final class SaveOptionsAccessory: NSView {
         let defaultLevel = levels.firstIndex { $0.1 == Preferences.defaultLevel } ?? 3
         levelPopUp.selectItem(at: defaultLevel)
 
-        passwordField.placeholderString = "Optional password"
+        passwordField.placeholderString = L("Optional password")
         excludeMetadataBox.state = Preferences.excludeMacMetadata ? .on : .off
 
         // Editable so a size the presets do not cover can simply be typed.
         for preset in VolumeSize.presets { volumeCombo.addItem(withObjectValue: preset.title) }
         volumeCombo.selectItem(at: 0)
         volumeCombo.completes = true
-        volumeCombo.placeholderString = "Do not split"
-        volumeCombo.toolTip = "Split the archive into volumes of this size, for example 100m or 1.5g."
+        volumeCombo.placeholderString = L("Do not split")
+        volumeCombo.toolTip = L("Split the archive into volumes of this size, for example 100m or 1.5g.")
 
         let grid = NSGridView(views: [
-            [label("Format:"), formatPopUp],
-            [label("Compression:"), levelPopUp],
-            [label("Password:"), passwordField],
+            [label(L("Format:")), formatPopUp],
+            [label(L("Compression:")), levelPopUp],
+            [label(L("Password:")), passwordField],
             [NSView(), encryptNamesBox],
-            [label("Split into:"), volumeCombo],
+            [label(L("Split into:")), volumeCombo],
             [NSView(), excludeMetadataBox],
         ])
         grid.rowSpacing = 8

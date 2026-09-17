@@ -137,7 +137,7 @@ public struct SevenZipEngine: ArchiveEngine {
         // Some formats normalise separators; fall back to the leaf name.
         let leaf = scratch.appendingPathComponent(entry.name)
         if FileManager.default.fileExists(atPath: leaf.path) { return leaf }
-        throw ArchiveError.ioFailure("\(entry.name) was not found after extraction.")
+        throw ArchiveError.ioFailure(L("%@ was not found after extraction.", entry.name))
     }
 
     private func isNestedTarArchive(_ archive: URL) async throws -> Bool {

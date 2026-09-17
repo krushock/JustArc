@@ -21,15 +21,15 @@ public enum RarToolInstaller {
         public var errorDescription: String? {
             switch self {
             case .unsupportedArchitecture:
-                return "RARLAB does not publish a build for this processor."
+                return L("RARLAB does not publish a build for this processor.")
             case .downloadFailed(let detail):
-                return "The download did not finish. \(detail)"
+                return L("The download did not finish. %@", detail)
             case .archiveUnreadable:
-                return "The downloaded file could not be unpacked."
+                return L("The downloaded file could not be unpacked.")
             case .toolMissingFromArchive:
-                return "The download did not contain the rar tool."
+                return L("The download did not contain the rar tool.")
             case .toolDidNotRun(let detail):
-                return "The downloaded tool would not run. \(detail)"
+                return L("The downloaded tool would not run. %@", detail)
             }
         }
     }
@@ -170,7 +170,7 @@ public enum RarToolInstaller {
     private static func fetchText(_ url: URL) async throws -> String {
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw InstallerError.downloadFailed("The server refused the request.")
+            throw InstallerError.downloadFailed(L("The server refused the request."))
         }
         return String(decoding: data, as: UTF8.self)
     }
@@ -180,7 +180,7 @@ public enum RarToolInstaller {
                                  progress: @escaping @Sendable (Double?) -> Void) async throws {
         let (bytes, response) = try await URLSession.shared.bytes(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw InstallerError.downloadFailed("The server returned an unexpected response.")
+            throw InstallerError.downloadFailed(L("The server returned an unexpected response."))
         }
 
         let expected = response.expectedContentLength
@@ -197,7 +197,7 @@ public enum RarToolInstaller {
         }
 
         guard data.count > 100_000 else {
-            throw InstallerError.downloadFailed("The file was too small to be the RAR tools.")
+            throw InstallerError.downloadFailed(L("The file was too small to be the RAR tools."))
         }
         try data.write(to: destination, options: .atomic)
     }

@@ -14,7 +14,9 @@ let package = Package(
             name: "JustArc",
             dependencies: ["JustArcCore"],
             path: "Sources/JustArc",
-            exclude: ["Resources/Info.plist"],
+            // Info.plist and the .lproj folders are assembled by Scripts/build-app.sh,
+            // not processed by SwiftPM.
+            exclude: ["Resources"],
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedFramework("AppKit"),

@@ -14,8 +14,8 @@ extension ArchiveBrowserViewController {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
-        panel.prompt = "Add"
-        panel.message = "Choose files or folders to add to \(session.displayName)."
+        panel.prompt = L("Add")
+        panel.message = L("Choose files or folders to add to %@.", session.displayName)
         guard panel.runModal() == .OK else { return }
         add(items: panel.urls)
     }
@@ -39,7 +39,7 @@ extension ArchiveBrowserViewController {
                                              level: Preferences.defaultLevel,
                                              password: session.password,
                                              excludeMacMetadata: Preferences.excludeMacMetadata)
-            let done = await runOperation(title: "Adding to \(session.displayName)") { cancellation, progress in
+            let done = await runOperation(title: L("Adding to %@", session.displayName)) { cancellation, progress in
                 try await self.engine.add(items: items, to: archiveURL, options: options,
                                           cancellation: cancellation, progress: progress)
             }
@@ -59,11 +59,12 @@ extension ArchiveBrowserViewController {
             extractAll(nil)
             return
         }
-        extract(entries: entries, label: "Extracting \(entries.count) item(s)")
+        extract(entries: entries,
+                label: L("Extracting %d items", entries.count))
     }
 
     @objc func extractAll(_ sender: Any?) {
-        extract(entries: nil, label: "Extracting \(session.displayName)")
+        extract(entries: nil, label: L("Extracting %@", session.displayName))
     }
 
     private func extract(entries: [ArchiveEntry]?, label: String) {
@@ -117,14 +118,15 @@ extension ArchiveBrowserViewController {
 
         let alert = NSAlert()
         alert.messageText = changed.count == 1
-            ? "\((changed[0].entryPath as NSString).lastPathComponent) was edited outside JustArc."
-            : "\(changed.count) files opened from this archive were edited outside JustArc."
+            ? L("%@ was edited outside JustArc.",
+                (changed[0].entryPath as NSString).lastPathComponent)
+            : L("%d files opened from this archive were edited outside JustArc.", changed.count)
         alert.informativeText = changed.count == 1
-            ? "Update \(session.displayName) with the edited file?"
-            : "Update \(session.displayName) with the edited files?\n\n"
+            ? L("Update %@ with the edited file?", session.displayName)
+            : L("Update %@ with the edited files?", session.displayName) + "\n\n"
               + changed.map(\.entryPath).joined(separator: "\n")
         alert.addButton(withTitle: changed.count == 1 ? "Update Archive" : "Update Archive")
-        alert.addButton(withTitle: "Keep Unchanged")
+        alert.addButton(withTitle: L("Keep Unchanged"))
         guard alert.runModal() == .alertFirstButtonReturn else {
             for entry in changed { editedFiles.acknowledge(entryPath: entry.entryPath) }
             return
@@ -132,7 +134,7 @@ extension ArchiveBrowserViewController {
 
         let options = currentCompressionOptions()
         Task {
-            let done = await runOperation(title: "Updating \(session.displayName)") { cancellation, progress in
+            let done = await runOperation(title: L("Updating %@", session.displayName)) { cancellation, progress in
                 for entry in changed {
                     try await self.engine.update(fileAt: entry.localURL,
                                                  entryPath: entry.entryPath,
@@ -198,12 +200,12 @@ extension ArchiveBrowserViewController {
 
         let alert = NSAlert()
         alert.messageText = nodes.count == 1
-            ? "Delete \(nodes[0].name) from the archive?"
-            : "Delete \(nodes.count) items from the archive?"
-        alert.informativeText = "This changes the archive on disk and cannot be undone."
+            ? L("Delete %@ from the archive?", nodes[0].name)
+            : L("Delete %d items from the archive?", nodes.count)
+        alert.informativeText = L("This changes the archive on disk and cannot be undone.")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: L("Delete"))
+        alert.addButton(withTitle: L("Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         guard let archiveURL = session.archiveURL else {
@@ -221,7 +223,7 @@ extension ArchiveBrowserViewController {
         let entries = nodes.flatMap { $0.descendantEntries() }
         for entry in entries { editedFiles.stopTracking(entryPath: entry.path) }
         Task {
-            let done = await runOperation(title: "Deleting from \(session.displayName)") { _, _ in
+            let done = await runOperation(title: L("Deleting from %@", session.displayName)) { _, _ in
                 try await self.engine.delete(entries: entries, from: archiveURL,
                                              password: self.session.password)
             }
@@ -237,10 +239,10 @@ extension ArchiveBrowserViewController {
         }
 
         let alert = NSAlert()
-        alert.messageText = "Rename \(node.name)"
-        alert.informativeText = "Enter a new name for this item inside the archive."
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Rename %@", node.name)
+        alert.informativeText = L("Enter a new name for this item inside the archive.")
+        alert.addButton(withTitle: L("Rename"))
+        alert.addButton(withTitle: L("Cancel"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 22))
         field.stringValue = node.name
         alert.accessoryView = field
@@ -253,7 +255,7 @@ extension ArchiveBrowserViewController {
 
         editedFiles.stopTracking(entryPath: entry.path)
         Task {
-            let done = await runOperation(title: "Renaming in \(session.displayName)") { _, _ in
+            let done = await runOperation(title: L("Renaming in %@", session.displayName)) { _, _ in
                 try await self.engine.rename(entry: entry, to: newPath,
                                              in: archiveURL, password: self.session.password)
             }
@@ -266,7 +268,7 @@ extension ArchiveBrowserViewController {
     @objc func testArchive(_ sender: Any?) {
         guard let archiveURL = session.archiveURL else { return }
         Task {
-            let report = await runOperation(title: "Testing \(session.displayName)") { cancellation, progress in
+            let report = await runOperation(title: L("Testing %@", session.displayName)) { cancellation, progress in
                 try await self.engine.test(archive: archiveURL, password: self.session.password,
                                            cancellation: cancellation, progress: progress)
             }
@@ -279,7 +281,7 @@ extension ArchiveBrowserViewController {
             alert.messageText = ok ? "No errors found." : "The test reported problems."
             alert.informativeText = report
             alert.alertStyle = ok ? .informational : .warning
-            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: L("OK"))
             alert.runModal()
         }
     }
@@ -317,7 +319,7 @@ extension ArchiveBrowserViewController {
         if let comment = listing.info.comment { lines.append("\nComment:\n\(comment)") }
 
         alert.informativeText = lines.joined(separator: "\n")
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: L("OK"))
         alert.runModal()
     }
 
@@ -337,8 +339,8 @@ extension ArchiveBrowserViewController {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.accessoryView = accessory
-        panel.prompt = "Save"
-        panel.message = "Choose a name and format for the archive."
+        panel.prompt = L("Save")
+        panel.message = L("Choose a name and format for the archive.")
         panel.nameFieldStringValue = defaultSaveName(for: accessory.selectedFormat)
         accessory.onFormatChange = { [weak panel] format in
             guard let panel else { return }
@@ -352,10 +354,10 @@ extension ArchiveBrowserViewController {
         if accessory.hasUnparseableVolumeSize {
             let warning = NSAlert()
             warning.alertStyle = .warning
-            warning.messageText = "That split size was not understood."
-            warning.informativeText = "Use a size such as 100m, 700m or 1.5g. Save without splitting?"
-            warning.addButton(withTitle: "Save Without Splitting")
-            warning.addButton(withTitle: "Cancel")
+            warning.messageText = L("That split size was not understood.")
+            warning.informativeText = L("Use a size such as 100m, 700m or 1.5g. Save without splitting?")
+            warning.addButton(withTitle: L("Save Without Splitting"))
+            warning.addButton(withTitle: L("Cancel"))
             guard warning.runModal() == .alertFirstButtonReturn else { return }
         }
         performSave(to: url, options: accessory.options())
@@ -384,7 +386,7 @@ extension ArchiveBrowserViewController {
 
     private func performSave(to url: URL, options: CompressionOptions) {
         Task {
-            let done = await runOperation(title: "Saving \(url.lastPathComponent)") { cancellation, progress in
+            let done = await runOperation(title: L("Saving %@", url.lastPathComponent)) { cancellation, progress in
                 try await self.session.save(to: url, options: options,
                                             cancellation: cancellation, progress: progress)
             }
@@ -439,9 +441,9 @@ extension ArchiveBrowserViewController {
     func present(_ error: Error) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "JustArc could not complete that command."
+        alert.messageText = L("JustArc could not complete that command.")
         alert.informativeText = error.localizedDescription
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: L("OK"))
         alert.runModal()
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ArchiveError: LocalizedError, Sendable {
+public enum ArchiveError: LocalizedError, Sendable, Equatable {
     case passwordRequired
     case wrongPassword
     case unsupportedFormat(String)
@@ -15,25 +15,47 @@ public enum ArchiveError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .passwordRequired:
-            return "This archive is password protected."
+            return L("This archive is password protected.")
         case .wrongPassword:
-            return "The password is incorrect."
+            return L("The password is incorrect.")
         case .unsupportedFormat(let f):
-            return "JustArc cannot read \(f) archives."
+            return L("JustArc cannot read %@ archives.", f)
         case .notWritable(let f):
-            return "JustArc cannot write \(f) archives. Save a copy in another format."
+            return L("JustArc cannot write %@ archives. Save a copy in another format.", f)
         case .engineFailed(let code, let message):
-            return message.isEmpty ? "The archive engine failed with code \(code)." : message
+            return message.isEmpty ? L("The archive engine failed with code %d.", code) : message
         case .engineMissing(let path):
-            return "The bundled archive engine is missing at \(path)."
+            return L("The bundled archive engine is missing at %@.", path)
         case .cancelled:
-            return "The operation was cancelled."
+            return L("The operation was cancelled.")
         case .unsafeEntry(let p):
-            return "The archive contains an unsafe path and was not extracted: \(p)"
+            return L("The archive contains an unsafe path and was not extracted: %@", p)
         case .ioFailure(let m):
             return m
         case .externalToolMissing(let name, let hint):
-            return "\(name) is not installed. \(hint)"
+            return L("%@ is not installed. %@", name, hint)
+        }
+    }
+
+    /// Compared by case, not by message, so `error == .cancelled` reads naturally.
+    public static func == (lhs: ArchiveError, rhs: ArchiveError) -> Bool {
+        switch (lhs, rhs) {
+        case (.passwordRequired, .passwordRequired),
+             (.wrongPassword, .wrongPassword),
+             (.cancelled, .cancelled):
+            return true
+        case let (.unsupportedFormat(a), .unsupportedFormat(b)),
+             let (.notWritable(a), .notWritable(b)),
+             let (.engineMissing(a), .engineMissing(b)),
+             let (.unsafeEntry(a), .unsafeEntry(b)),
+             let (.ioFailure(a), .ioFailure(b)):
+            return a == b
+        case let (.engineFailed(codeA, messageA), .engineFailed(codeB, messageB)):
+            return codeA == codeB && messageA == messageB
+        case let (.externalToolMissing(nameA, hintA), .externalToolMissing(nameB, hintB)):
+            return nameA == nameB && hintA == hintB
+        default:
+            return false
         }
     }
 

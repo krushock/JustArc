@@ -136,7 +136,7 @@ public extension ArchiveEngine {
         // Some backends normalise separators or drop leading folders.
         let leaf = scratch.appendingPathComponent(entry.name)
         if FileManager.default.fileExists(atPath: leaf.path) { return leaf }
-        throw ArchiveError.ioFailure("\(entry.name) was not found after extraction.")
+        throw ArchiveError.ioFailure(L("%@ was not found after extraction.", entry.name))
     }
 
     func create(archive: URL, items: [URL], options: CompressionOptions,

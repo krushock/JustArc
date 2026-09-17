@@ -136,7 +136,7 @@ public struct DMGEngine: ArchiveEngine {
         Diagnostics.log("extract \(archive.lastPathComponent): \(jobs.count) job(s) from \(image.mountPoints.count) mount(s) -> \(destination.path)")
         guard !jobs.isEmpty else {
             throw ArchiveError.ioFailure(
-                "Nothing in \(archive.lastPathComponent) could be read. The image mounted but appeared empty.")
+                L("Nothing in %@ could be read. The image mounted but appeared empty.", archive.lastPathComponent))
         }
 
         let totalBytes = jobs.reduce(UInt64(0)) { $0 + Self.recursiveSize(of: $1.source) }
@@ -255,7 +255,7 @@ public struct DMGEngine: ArchiveEngine {
                                                  onOutput: { reporter.consume($0) })
         if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
         guard result.exitCode == 0 else { throw Self.classify(result: result, password: password) }
-        return Self.readableTail(of: result.combined, fallback: "The disk image verified successfully.")
+        return Self.readableTail(of: result.combined, fallback: L("The disk image verified successfully."))
     }
 
     // MARK: - Creating
@@ -266,7 +266,7 @@ public struct DMGEngine: ArchiveEngine {
                        cancellation: CancellationToken? = nil,
                        progress: ProgressHandler? = nil) async throws {
         guard !items.isEmpty else {
-            throw ArchiveError.ioFailure("There is nothing to put in the disk image.")
+            throw ArchiveError.ioFailure(L("There is nothing to put in the disk image."))
         }
 
         let staging = try stage(items: items)
@@ -351,7 +351,7 @@ public struct DMGEngine: ArchiveEngine {
         let cleaned = raw.replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
             .trimmingCharacters(in: .whitespaces)
-        let name = cleaned.isEmpty ? "Disk Image" : cleaned
+        let name = cleaned.isEmpty ? L("Disk Image") : cleaned
         // HFS+ volume names are limited to 27 characters.
         return String(name.prefix(27))
     }
@@ -401,7 +401,7 @@ public struct DMGEngine: ArchiveEngine {
             try? FileManager.default.removeItem(at: mountRoot)
             throw ArchiveError.engineFailed(
                 code: 0,
-                message: "\(archive.lastPathComponent) has no mountable file systems.")
+                message: L("%@ has no mountable file systems.", archive.lastPathComponent))
         }
 
         let image = MountedImage(devEntry: devEntry, mountPoints: mountPoints, mountRoot: mountRoot)
@@ -599,14 +599,14 @@ public struct DMGEngine: ArchiveEngine {
             return (password?.isEmpty ?? true) ? .passwordRequired : .wrongPassword
         }
         if lowered.contains("no mountable file systems") {
-            return .engineFailed(code: result.exitCode, message: "The disk image has no mountable file systems.")
+            return .engineFailed(code: result.exitCode, message: L("The disk image has no mountable file systems."))
         }
         if lowered.contains("resource busy") || lowered.contains("resource temporarily unavailable") {
             return .engineFailed(code: result.exitCode,
-                                 message: "The disk image is in use by another program.")
+                                 message: L("The disk image is in use by another program."))
         }
         return .engineFailed(code: result.exitCode,
-                             message: readableTail(of: text, fallback: "hdiutil failed."))
+                             message: readableTail(of: text, fallback: L("hdiutil failed.")))
     }
 
     static func readableTail(of text: String, fallback: String) -> String {

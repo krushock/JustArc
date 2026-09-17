@@ -59,11 +59,11 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard session.hasUnsavedChanges else { return true }
         let alert = NSAlert()
-        alert.messageText = "Save changes to \(session.displayName)?"
-        alert.informativeText = "The files you added have not been written to an archive yet."
-        alert.addButton(withTitle: "Save…")
-        alert.addButton(withTitle: "Discard")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Save changes to %@?", session.displayName)
+        alert.informativeText = L("The files you added have not been written to an archive yet.")
+        alert.addButton(withTitle: L("Save…"))
+        alert.addButton(withTitle: L("Discard"))
+        alert.addButton(withTitle: L("Cancel"))
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             browser.saveArchiveAs(nil)

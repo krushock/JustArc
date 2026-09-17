@@ -1,4 +1,5 @@
 import Foundation
+import JustArcCore
 import AppKit
 
 enum ExtractDestination: String, CaseIterable {
@@ -9,10 +10,10 @@ enum ExtractDestination: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .besideArchive: return "Same folder as the archive"
-        case .downloads: return "Downloads"
-        case .desktop: return "Desktop"
-        case .ask: return "Ask every time"
+        case .besideArchive: return L("Same folder as the archive")
+        case .downloads: return L("Downloads")
+        case .desktop: return L("Desktop")
+        case .ask: return L("Ask every time")
         }
     }
 }

@@ -27,7 +27,7 @@ final class ArchiveStatusBar: NSView {
         }
         totalsLabel.alignment = .right
 
-        lockIcon.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Encrypted")
+        lockIcon.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: L("Encrypted"))
         lockIcon.contentTintColor = .secondaryLabelColor
         lockIcon.isHidden = true
         lockIcon.widthAnchor.constraint(equalToConstant: 12).isActive = true
@@ -54,15 +54,18 @@ final class ArchiveStatusBar: NSView {
         } else {
             let files = selection.filter { !$0.isDirectory }
             let bytes = selection.reduce(0) { $0 + $1.size }
-            let noun = files.count == 1 ? "file" : "files"
-            selectionLabel.stringValue =
-                "Selected \(Formatting.count(files.count)) \(noun), \(Formatting.bytes(bytes))"
+            selectionLabel.stringValue = files.count == 1
+                ? L("Selected 1 file, %@", Formatting.bytes(bytes))
+                : L("Selected %@ files, %@", Formatting.count(files.count), Formatting.bytes(bytes))
         }
 
-        let noun = listing.fileCount == 1 ? "file" : "files"
-        var totals = "Total \(Formatting.count(listing.fileCount)) \(noun), \(Formatting.bytes(listing.totalSize))"
+        var totals = listing.fileCount == 1
+            ? L("Total 1 file, %@", Formatting.bytes(listing.totalSize))
+            : L("Total %@ files, %@", Formatting.count(listing.fileCount),
+                Formatting.bytes(listing.totalSize))
         if listing.totalSize > 0, listing.totalPacked > 0 {
-            totals += " — packed \(Formatting.ratio(size: listing.totalSize, packed: listing.totalPacked))"
+            totals += L(" — packed %@",
+                        Formatting.ratio(size: listing.totalSize, packed: listing.totalPacked))
         }
         totalsLabel.stringValue = totals
     }

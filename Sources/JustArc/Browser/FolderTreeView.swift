@@ -17,7 +17,7 @@ final class FolderTreeView: NSObject {
     override init() {
         super.init()
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("folder"))
-        column.title = "Folders"
+        column.title = L("Folders")
         column.width = 190
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column

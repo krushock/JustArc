@@ -22,6 +22,12 @@ cp "$BIN/JustArc" "$APP/Contents/MacOS/JustArc"
 cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Vendor/7zz" "$APP/Contents/Helpers/7zz"
 cp "$ROOT/Vendor/7zz-License.txt" "$APP/Contents/Resources/7-Zip-License.txt"
+
+# Localizations. Each .lproj folder is copied as-is next to the other resources.
+for lproj in "$ROOT/Sources/JustArc/Resources/"*.lproj; do
+  [ -d "$lproj" ] || continue
+  cp -R "$lproj" "$APP/Contents/Resources/"
+done
 chmod +x "$APP/Contents/Helpers/7zz"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 

@@ -11,7 +11,7 @@ final class ProgressWindowController: NSWindowController {
     private let elapsedLabel = NSTextField(labelWithString: "0:00")
     private let remainingLabel = NSTextField(labelWithString: "--:--")
     private let fileLabel = NSTextField(labelWithString: "")
-    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
+    private let cancelButton = NSButton(title: L("Cancel"), target: nil, action: nil)
 
     private let cancellation: CancellationToken
     private let startDate = Date()
@@ -65,8 +65,8 @@ final class ProgressWindowController: NSWindowController {
             label.textColor = .secondaryLabelColor
         }
 
-        let elapsedRow = labelledRow("Elapsed time", elapsedLabel)
-        let remainingRow = labelledRow("Time left", remainingLabel)
+        let elapsedRow = labelledRow(L("Elapsed time"), elapsedLabel)
+        let remainingRow = labelledRow(L("Time left"), remainingLabel)
 
         cancelButton.target = self
         cancelButton.action = #selector(cancelPressed)
@@ -147,7 +147,7 @@ final class ProgressWindowController: NSWindowController {
 
     @objc private func cancelPressed() {
         cancelButton.isEnabled = false
-        cancelButton.title = "Cancelling…"
+        cancelButton.title = L("Cancelling…")
         cancellation.cancel()
         onCancel?()
     }

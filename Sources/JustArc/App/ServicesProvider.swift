@@ -85,7 +85,7 @@ final class ServicesProvider: NSObject {
                                          excludeMacMetadata: Preferences.excludeMacMetadata)
 
         let cancellation = CancellationToken()
-        let panel = ProgressWindowController(title: "Creating \(destination.lastPathComponent)",
+        let panel = ProgressWindowController(title: L("Creating %@", destination.lastPathComponent),
                                              cancellation: cancellation)
         panel.showWindow(nil)
         panel.window?.makeKeyAndOrderFront(nil)
@@ -109,9 +109,9 @@ final class ServicesProvider: NSObject {
             panel.finish()
             let alert = NSAlert()
             alert.alertStyle = .warning
-            alert.messageText = "JustArc could not create \(destination.lastPathComponent)."
+            alert.messageText = L("JustArc could not create %@.", destination.lastPathComponent)
             alert.informativeText = error.localizedDescription
-            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: L("OK"))
             alert.runModal()
         }
     }

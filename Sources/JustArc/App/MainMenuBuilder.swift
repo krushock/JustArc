@@ -17,8 +17,9 @@ enum MainMenuBuilder {
     }
 
     private static func submenu(_ title: String, _ build: (NSMenu) -> Void) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        let menu = NSMenu(title: title)
+        // Every menu title passes through here, so one lookup covers the whole bar.
+        let item = NSMenuItem(title: L(title), action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: L(title))
         build(menu)
         item.submenu = menu
         return item
@@ -31,7 +32,7 @@ enum MainMenuBuilder {
                             _ key: String = "",
                             modifiers: NSEvent.ModifierFlags = .command,
                             target: AnyObject? = nil) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        let item = NSMenuItem(title: L(title), action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         item.target = target
         menu.addItem(item)
@@ -121,6 +122,7 @@ enum MainMenuBuilder {
     private static func textEncodingMenuItem() -> NSMenuItem {
         submenu("Filename Encoding") { menu in
             for encoding in ArchiveTextEncoding.all {
+                // Already localised by the encoding table itself.
                 let item = add(menu, encoding.title,
                                #selector(ArchiveBrowserViewController.setTextEncoding(_:)))
                 item.tag = encoding.codePage ?? 0

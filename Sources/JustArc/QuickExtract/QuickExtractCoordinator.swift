@@ -59,8 +59,8 @@ final class QuickExtractCoordinator {
         }
 
         guard !listing.entries.isEmpty else {
-            present(message: "\(archive.lastPathComponent) is empty.",
-                    informative: "There is nothing to extract.")
+            present(message: L("%@ is empty.", archive.lastPathComponent),
+                    informative: L("There is nothing to extract."))
             return
         }
         guard confirmIfSuspicious(listing: listing, archive: archive) else { return }
@@ -73,7 +73,7 @@ final class QuickExtractCoordinator {
         // Step 2: extract, showing the progress panel.
         let cancellation = CancellationToken()
         let panel = ProgressWindowController(
-            title: "Extracting \(archive.lastPathComponent)",
+            title: L("Extracting %@", archive.lastPathComponent),
             cancellation: cancellation)
         panel.showWindow(nil)
         panel.window?.makeKeyAndOrderFront(nil)
@@ -168,8 +168,8 @@ final class QuickExtractCoordinator {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "Extract"
-        panel.message = "Choose where to extract \(archive.lastPathComponent)."
+        panel.prompt = L("Extract")
+        panel.message = L("Choose where to extract %@.", archive.lastPathComponent)
         panel.directoryURL = archive.deletingLastPathComponent()
         NSApp.activate(ignoringOtherApps: true)
         return panel.runModal() == .OK ? panel.url : nil
@@ -180,23 +180,21 @@ final class QuickExtractCoordinator {
         guard verdict.isSuspicious else { return true }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "\(archive.lastPathComponent) expands to a very large amount of data."
-        alert.informativeText = """
-        It contains \(Formatting.count(verdict.entryCount)) items \
-        totalling \(Formatting.bytes(verdict.expandedBytes)).
-        Extract it anyway?
-        """
-        alert.addButton(withTitle: "Extract")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("%@ expands to a very large amount of data.", archive.lastPathComponent)
+        alert.informativeText = L("It contains %@ items totalling %@. Extract it anyway?",
+                                  Formatting.count(verdict.entryCount),
+                                  Formatting.bytes(verdict.expandedBytes))
+        alert.addButton(withTitle: L("Extract"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func present(error: Error, archive: URL) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "JustArc could not extract \(archive.lastPathComponent)."
+        alert.messageText = L("JustArc could not extract %@.", archive.lastPathComponent)
         alert.informativeText = error.localizedDescription
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: L("OK"))
         alert.runModal()
     }
 
@@ -204,19 +202,7 @@ final class QuickExtractCoordinator {
         let alert = NSAlert()
         alert.messageText = message
         alert.informativeText = informative
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: L("OK"))
         alert.runModal()
-    }
-}
-
-extension ArchiveError: @retroactive Equatable {
-    public static func == (lhs: ArchiveError, rhs: ArchiveError) -> Bool {
-        switch (lhs, rhs) {
-        case (.cancelled, .cancelled), (.passwordRequired, .passwordRequired),
-             (.wrongPassword, .wrongPassword):
-            return true
-        default:
-            return false
-        }
     }
 }

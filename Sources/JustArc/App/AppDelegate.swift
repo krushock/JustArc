@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         Preferences.registerDefaults()
+        Diagnostics.log("launch: ui language \(Bundle.main.preferredLocalizations.first ?? "?"), "
+                        + "\"Extract To\" reads as \"\(L("Extract To"))\"")
         NSApp.mainMenu = MainMenuBuilder.build()
         quickExtract.onAllJobsFinished = { [weak self] in
             self?.terminateIfNothingLeftToShow()
@@ -94,11 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func presentMissingEngineAndQuit() {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "JustArc is missing its archive engine."
-        alert.informativeText = """
-        The bundled 7-Zip helper could not be found in Contents/Helpers.
-        Reinstall JustArc, or set JUSTARC_7ZZ to a 7zz binary when running from a build folder.
-        """
+        alert.messageText = L("JustArc is missing its archive engine.")
+        alert.informativeText = L("The bundled 7-Zip helper could not be found in Contents/Helpers. Reinstall JustArc, or set JUSTARC_7ZZ to a 7zz binary when running from a build folder.")
         alert.runModal()
         NSApp.terminate(nil)
     }
@@ -154,8 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.message = "Choose one or more archives to open."
-        panel.prompt = "Open"
+        panel.message = L("Choose one or more archives to open.")
+        panel.prompt = L("Open")
         guard panel.runModal() == .OK else { return }
         for url in panel.urls { openInBrowser(url) }
     }
@@ -170,14 +169,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showAbout(_ sender: Any?) {
         let alert = NSAlert()
-        alert.messageText = "JustArc"
-        alert.informativeText = """
-        A fast archiver for macOS.
-
-        Reading and writing is powered by 7-Zip \(SevenZipVersion.short), \
-        used under the GNU LGPL. Disk images use the system hdiutil tool.
-        """
-        alert.addButton(withTitle: "OK")
+        alert.messageText = L("JustArc")
+        alert.informativeText = L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool.", SevenZipVersion.short)
+        alert.addButton(withTitle: L("OK"))
         alert.runModal()
     }
 }

@@ -47,10 +47,22 @@ final class DMGEngineParsingTests: XCTestCase {
         XCTAssertEqual(long.count, 27, "HFS+ rejects volume names longer than 27 characters")
     }
 
-    func testDiskImagesRouteToTheDiskImageEngine() {
+    func testEachFormatRoutesToItsOwnEngine() {
         XCTAssertTrue(EngineFactory.engine(for: URL(fileURLWithPath: "/tmp/a.dmg")) is DMGEngine)
         XCTAssertTrue(EngineFactory.engine(for: URL(fileURLWithPath: "/tmp/a.zip")) is SevenZipEngine)
-        XCTAssertTrue(EngineFactory.engine(for: URL(fileURLWithPath: "/tmp/a.rar")) is SevenZipEngine)
+        XCTAssertTrue(EngineFactory.engine(for: URL(fileURLWithPath: "/tmp/a.tar.gz")) is SevenZipEngine)
+        // RAR has its own engine because writing needs RARLAB's tool, even though
+        // reading is delegated straight back to 7-Zip.
+        XCTAssertTrue(EngineFactory.engine(for: URL(fileURLWithPath: "/tmp/a.rar")) is RarEngine)
+        XCTAssertTrue(EngineFactory.engine(for: URL(fileURLWithPath: "/tmp/notes.txt")) is SevenZipEngine)
+    }
+
+    func testRarEngineReadsThroughSevenZip() async throws {
+        let (root, archive) = try await FixtureBuilder.makeArchive(named: "readable.zip")
+        defer { FixtureBuilder.cleanup(root) }
+        // A zip handed to the RAR engine still lists, because reading is delegated.
+        let listing = try await RarEngine().list(archive: archive, password: nil, encodingCodePage: nil)
+        XCTAssertTrue(listing.entries.contains { $0.path == "payload/readme.txt" })
     }
 
     func testReadOnlyEngineRefusesToWrite() async {

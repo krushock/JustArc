@@ -102,13 +102,13 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open", action: #selector(openSelectedFile(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Quick Look", action: #selector(toggleQuickLook(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: L("Open"), action: #selector(openSelectedFile(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: L("Quick Look"), action: #selector(toggleQuickLook(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Extract Selected…", action: #selector(extractSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: L("Extract Selected…"), action: #selector(extractSelected(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Delete", action: #selector(deleteSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: L("Rename…"), action: #selector(renameSelected(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: L("Delete"), action: #selector(deleteSelected(_:)), keyEquivalent: "")
         for item in menu.items { item.target = self }
         table.menu = menu
     }
@@ -266,7 +266,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         toolbar.setEnabled(!session.isUntitled, for: .password)
 
         var title = session.displayName
-        if session.hasUnsavedChanges { title += " — Edited" }
+        if session.hasUnsavedChanges { title += L(" — Edited") }
         onTitleChange?(title, session.archiveURL)
         refreshStatusBar()
     }
