@@ -180,11 +180,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc func showAbout(_ sender: Any?) {
-        let alert = NSAlert()
-        alert.messageText = L("JustArc")
-        alert.informativeText = L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool.", SevenZipVersion.short)
-        alert.addButton(withTitle: L("OK"))
-        alert.runModal()
+        // The standard panel already knows the app's name, icon and version; only the
+        // credits are ours to supply.
+        let credits = NSAttributedString(
+            string: L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool.", SevenZipVersion.short),
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.labelColor,
+            ])
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

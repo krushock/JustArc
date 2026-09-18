@@ -29,6 +29,7 @@
 "Add Files…" = "Добавить файлы…";
 "Adding to %@" = "Добавление в %@";
 "Always do this" = "Всегда поступать так";
+"Archive" = "Архив";
 "Archive Information" = "Сведения об архиве";
 "Archive size: %@" = "Размер архива: %@";
 "Ask every time" = "Спрашивать каждый раз";
@@ -100,7 +101,7 @@
 "Filename Encoding" = "Кодировка имён файлов";
 "Files: %@" = "Файлов: %@";
 "Filter" = "Фильтр";
-"Find" = "Найти";
+"Filter the list" = "Отфильтровать список";
 "Find…" = "Найти…";
 "Folder" = "Папка";
 "Folders" = "Папки";
@@ -109,10 +110,10 @@
 "Format: %@" = "Формат: %@";
 "Forward" = "Вперёд";
 "Found at %@" = "Найдено: %@";
-"Go to the enclosing folder" = "Перейти в вышестоящую папку";
 "Help" = "Справка";
 "Hide JustArc" = "Скрыть JustArc";
 "Hide Others" = "Скрыть остальные";
+"Hide Sidebar" = "Скрыть боковое меню";
 "ISO Image" = "Образ ISO";
 "If a file exists:" = "Если файл уже есть:";
 "If a folder exists:" = "Если папка уже есть:";
@@ -120,6 +121,7 @@
 "Install RARLAB's command line tool, then point JustArc at it in Settings." = "Установите утилиту командной строки RARLAB и укажите путь к ней в настройках JustArc.";
 "Invert Selection" = "Инвертировать выделение";
 "It contains %@ items totalling %@. Extract it anyway?" = "В нём %@ объектов общим размером %@. Всё равно распаковать?";
+"Item" = "Объект";
 "Japanese (Shift JIS)" = "Японская (Shift JIS)";
 "JustArc" = "JustArc";
 "JustArc Settings" = "Настройки JustArc";
@@ -143,6 +145,7 @@
 "Modified" = "Изменён";
 "Move the archive to the Trash afterwards" = "Перемещать архив в Корзину после распаковки";
 "Name" = "Имя";
+"Navigate" = "Навигация";
 "New Archive" = "Новый архив";
 "New archives" = "Новые архивы";
 "No" = "Нет";
@@ -202,7 +205,7 @@
 "Set Password…" = "Задать пароль…";
 "Settings…" = "Настройки…";
 "Show All" = "Показать все";
-"Show Folder Tree" = "Показывать дерево папок";
+"Show Sidebar" = "Показать боковое меню";
 "Show password" = "Показать пароль";
 "Simplified Chinese (GBK)" = "Упрощённая китайская (GBK)";
 "Size" = "Размер";
@@ -257,6 +260,7 @@
 "Total %@ files, %@" = "Всего файлов: %@, %@";
 "Total 1 file, %@" = "Всего 1 файл, %@";
 "Traditional Chinese (Big5)" = "Традиционная китайская (Big5)";
+"Transfer" = "Передача";
 "Type" = "Тип";
 "Ultra" = "Ультра";
 "Unicode (UTF-8)" = "Юникод (UTF-8)";

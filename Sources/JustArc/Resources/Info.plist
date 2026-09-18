@@ -8,6 +8,8 @@
 	<string>JustArc</string>
 	<key>CFBundleExecutable</key>
 	<string>JustArc</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.justarc.JustArc</string>
 	<key>CFBundlePackageType</key>

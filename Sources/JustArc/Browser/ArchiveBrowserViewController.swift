@@ -3,18 +3,19 @@ import QuickLookUI
 import UniformTypeIdentifiers
 import JustArcCore
 
-/// The WinRAR-style archive window: command strip, address row, file list, status bar.
+/// The file list that fills the window beside the sidebar.
+///
+/// The window's chrome lives where the system expects it: commands in the toolbar,
+/// the location in the window's subtitle, the folder tree in a sidebar split item.
+/// This controller owns the list and the status bar, and nothing else.
 @MainActor
-final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation {
+final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation,
+                                          NSToolbarItemValidation {
     let session: ArchiveSession
     /// Follows the session, so a disk image window drives hdiutil.
     var engine: ArchiveEngine { session.engine }
 
-    private let toolbar = ArchiveToolbarView()
-    private let pathBar = ArchivePathBar()
     private let statusBar = ArchiveStatusBar()
-    private let folderTree = FolderTreeView()
-    private let splitView = NSSplitView()
     private let scrollView = NSScrollView()
     private let table = ArchiveOutlineView()
     private let listSource = ArchiveListDataSource()
@@ -40,6 +41,12 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     }()
 
     var onTitleChange: ((String, URL?) -> Void)?
+    /// Where we are inside the archive, for the window subtitle.
+    var onLocationChange: ((String) -> Void)?
+    /// The contents changed, so the sidebar needs rebuilding.
+    var onTreeChange: ((EntryTree, String, String) -> Void)?
+    var onToggleSidebar: (() -> Void)?
+    var onFocusFilter: (() -> Void)?
 
     init(session: ArchiveSession) {
         self.session = session
@@ -59,23 +66,27 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     // MARK: - Layout
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 560))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 620))
         buildTable()
-        buildSplit()
         assemble()
         wireCallbacks()
-        applyFolderTreeVisibility()
         refreshChrome()
     }
 
     private func buildTable() {
         table.dataSource = listSource
         table.delegate = listSource
-        table.style = .fullWidth
-        table.usesAlternatingRowBackgroundColors = true
+        // Inset is the list style the system apps use now: rounded selection that sits
+        // in from the edges, and no zebra striping.
+        table.style = .inset
+        table.usesAlternatingRowBackgroundColors = false
         table.allowsMultipleSelection = true
-        table.rowHeight = 20
-        table.intercellSpacing = NSSize(width: 4, height: 0)
+        table.rowHeight = 24
+        table.intercellSpacing = NSSize(width: 8, height: 0)
+        table.gridStyleMask = []
+        table.selectionHighlightStyle = .regular
+        table.allowsColumnSelection = false
+        table.usesAutomaticRowHeights = false
         table.doubleAction = #selector(tableDoubleClicked)
         table.target = self
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
@@ -106,6 +117,10 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        // Lets the list scroll under the toolbar, which is what drives the scroll edge
+        // effect the system draws above it.
+        scrollView.automaticallyAdjustsContentInsets = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         let menu = NSMenu()
@@ -120,25 +135,10 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         table.menu = menu
     }
 
-    private func buildSplit() {
-        splitView.isVertical = true
-        splitView.dividerStyle = .thin
-        splitView.translatesAutoresizingMaskIntoConstraints = false
-
-        let treeScroll = NSScrollView()
-        treeScroll.documentView = folderTree.outlineView
-        treeScroll.hasVerticalScroller = true
-        treeScroll.borderType = .noBorder
-        treeScroll.identifier = NSUserInterfaceItemIdentifier("folderTreePane")
-        folderTree.scrollView = treeScroll
-
-        splitView.addArrangedSubview(treeScroll)
-        splitView.addArrangedSubview(scrollView)
-        splitView.setHoldingPriority(.defaultLow, forSubviewAt: 0)
-    }
-
     private func assemble() {
-        let stack = NSStackView(views: [toolbar, pathBar, splitView, statusBar])
+        // The scroll view runs the full height so the list slides under the toolbar,
+        // which is what produces the scroll edge effect on macOS 26 and later.
+        let stack = NSStackView(views: [scrollView, statusBar])
         stack.orientation = .vertical
         stack.spacing = 0
         stack.distribution = .fill
@@ -150,36 +150,12 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             stack.topAnchor.constraint(equalTo: view.topAnchor),
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            toolbar.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            pathBar.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            splitView.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            scrollView.widthAnchor.constraint(equalTo: stack.widthAnchor),
             statusBar.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
     }
 
     private func wireCallbacks() {
-        toolbar.onCommand = { [weak self] command in
-            guard let self else { return }
-            switch command {
-            case .add: self.addFiles(nil)
-            case .extractTo: self.extractSelectedOrAll()
-            case .test: self.testArchive(nil)
-            case .view: self.openSelectedFile(nil)
-            case .delete: self.deleteSelected(nil)
-            case .find: self.focusFilterField(nil)
-            case .info: self.showArchiveInfo(nil)
-            case .password: self.setPassword(nil)
-            case .save: self.saveArchive(nil)
-            }
-        }
-
-        pathBar.onGoUp = { [weak self] in self?.goUp(nil) }
-        pathBar.onNavigate = { [weak self] path in self?.navigate(to: path) }
-        pathBar.onFilterChanged = { [weak self] text in
-            self?.filterText = text
-            self?.reloadList()
-        }
-
         table.onOpen = { [weak self] in self?.openSelectedFile(nil) }
         table.onPreview = { [weak self] in self?.toggleQuickLook(nil) }
         table.onDelete = { [weak self] in self?.deleteSelected(nil) }
@@ -193,8 +169,6 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         }
         listSource.onDropFiles = { [weak self] urls in self?.add(items: urls) }
         listSource.promiseProvider = { [weak self] entry in self?.makePromise(for: entry) }
-
-        folderTree.onSelect = { [weak self] path in self?.navigate(to: path) }
 
         editedFiles.onChangesDetected = { [weak self] changed in
             self?.offerToUpdate(changed)
@@ -285,8 +259,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         expandSingleRootFolder()
         Diagnostics.log("list: \(session.visibleEntries.count) entries, "
                         + "\(table.numberOfRows) rows at \"\(currentPath)\"")
-        folderTree.reload(tree: session.tree, archiveName: session.displayName)
-        folderTree.select(path: currentPath)
+        onTreeChange?(session.tree, session.displayName, currentPath)
         refreshChrome()
     }
 
@@ -302,18 +275,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     }
 
     private func refreshChrome() {
-        let icon = session.archiveURL.map { NSWorkspace.shared.icon(forFile: $0.path) }
-            ?? NSImage(systemSymbolName: "doc.zipper", accessibilityDescription: nil)
-        icon?.size = NSSize(width: 14, height: 14)
-        pathBar.update(archiveName: session.displayName, currentPath: currentPath, icon: icon)
-
-        // Adding and deleting need in-place editing; Save As works for any writable format.
-        let editable = session.canModifyContents
-        toolbar.setEnabled(editable, for: .add)
-        toolbar.setEnabled(editable, for: .delete)
-        toolbar.setEnabled(session.canSaveAs, for: .save)
-        toolbar.setEnabled(!session.isUntitled, for: .test)
-        toolbar.setEnabled(!session.isUntitled, for: .password)
+        onLocationChange?(currentPath)
 
         var title = session.displayName
         if session.hasUnsavedChanges { title += L(" — Edited") }
@@ -392,21 +354,18 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     }
 
     @objc func focusFilterField(_ sender: Any?) {
-        pathBar.focusFilter()
+        onFocusFilter?()
+    }
+
+    /// Called by the toolbar's search field.
+    func setFilter(_ text: String) {
+        guard filterText != text else { return }
+        filterText = text
+        reloadList()
     }
 
     @objc func toggleFolderTree(_ sender: Any?) {
-        Preferences.showFolderTree.toggle()
-        applyFolderTreeVisibility()
-    }
-
-    private func applyFolderTreeVisibility() {
-        guard let pane = folderTree.scrollView else { return }
-        let visible = Preferences.showFolderTree
-        pane.isHidden = !visible
-        if visible {
-            splitView.setPosition(210, ofDividerAt: 0)
-        }
+        onToggleSidebar?()
     }
 
     @objc func reloadArchive(_ sender: Any?) {
@@ -422,6 +381,34 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         loadArchive()
     }
 
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        canPerform(item.action)
+    }
+
+    /// One place deciding whether a command applies, so the toolbar and the menus
+    /// never disagree about what is available.
+    func canPerform(_ action: Selector?) -> Bool {
+        switch action {
+        case #selector(addFiles(_:)), #selector(deleteSelected(_:)), #selector(renameSelected(_:)):
+            return session.canModifyContents
+        case #selector(saveArchive(_:)), #selector(saveArchiveAs(_:)):
+            return session.canSaveAs
+        case #selector(testArchive(_:)), #selector(setPassword(_:)),
+             #selector(extractSelected(_:)), #selector(extractAll(_:)):
+            return !session.isUntitled
+        case #selector(goBack(_:)):
+            return historyIndex > 0
+        case #selector(goForward(_:)):
+            return historyIndex + 1 < history.count
+        case #selector(goUp(_:)):
+            return !currentPath.isEmpty
+        case #selector(openSelectedFile(_:)), #selector(toggleQuickLook(_:)):
+            return !selectedNodesForCommand().isEmpty
+        default:
+            return true
+        }
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(setTextEncoding(_:)) {
             let current = session.encodingCodePage ?? 0
@@ -429,9 +416,10 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             return ArchiveTextEncoding.isOverridable(session.format) && !session.isUntitled
         }
         if menuItem.action == #selector(toggleFolderTree(_:)) {
-            menuItem.state = Preferences.showFolderTree ? .on : .off
+            menuItem.title = Preferences.showFolderTree ? L("Hide Sidebar") : L("Show Sidebar")
+            return true
         }
-        return true
+        return canPerform(menuItem.action)
     }
 
     @objc func revealArchiveInFinder(_ sender: Any?) {

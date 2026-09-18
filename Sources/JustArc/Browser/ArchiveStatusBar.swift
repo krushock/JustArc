@@ -1,11 +1,14 @@
 import AppKit
 import JustArcCore
 
-/// WinRAR's two-pane footer: selection summary on the left, archive totals on the right.
-final class ArchiveStatusBar: NSView {
+/// The thin bar along the bottom of the window, the way Finder reports what is in
+/// view. It is a vibrant material rather than a painted rectangle, so content
+/// scrolling beneath it shows through the way the system intends.
+final class ArchiveStatusBar: NSVisualEffectView {
     private let lockIcon = NSImageView()
     private let selectionLabel = NSTextField(labelWithString: "")
     private let totalsLabel = NSTextField(labelWithString: "")
+    private let topSeparator = NSBox()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -16,10 +19,14 @@ final class ArchiveStatusBar: NSView {
     required init?(coder: NSCoder) { fatalError("not supported") }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: 24)
+        NSSize(width: NSView.noIntrinsicMetric, height: 28)
     }
 
     private func build() {
+        material = .titlebar
+        blendingMode = .withinWindow
+        state = .followsWindowActiveState
+
         for label in [selectionLabel, totalsLabel] {
             label.font = .systemFont(ofSize: 11)
             label.textColor = .secondaryLabelColor
@@ -27,18 +34,28 @@ final class ArchiveStatusBar: NSView {
         }
         totalsLabel.alignment = .right
 
-        lockIcon.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: L("Encrypted"))
+        lockIcon.image = NSImage(systemSymbolName: "lock.fill",
+                                 accessibilityDescription: L("Encrypted"))
+        lockIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
         lockIcon.contentTintColor = .secondaryLabelColor
         lockIcon.isHidden = true
         lockIcon.widthAnchor.constraint(equalToConstant: 12).isActive = true
 
+        topSeparator.boxType = .separator
+        topSeparator.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(topSeparator)
+
         let stack = NSStackView(views: [lockIcon, selectionLabel, NSView(), totalsLabel])
         stack.orientation = .horizontal
         stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 2, left: 10, bottom: 2, right: 10)
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+
         NSLayoutConstraint.activate([
+            topSeparator.leadingAnchor.constraint(equalTo: leadingAnchor),
+            topSeparator.trailingAnchor.constraint(equalTo: trailingAnchor),
+            topSeparator.topAnchor.constraint(equalTo: topAnchor),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
@@ -68,11 +85,5 @@ final class ArchiveStatusBar: NSView {
                         Formatting.ratio(size: listing.totalSize, packed: listing.totalPacked))
         }
         totalsLabel.stringValue = totals
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
     }
 }

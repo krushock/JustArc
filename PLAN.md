@@ -2,6 +2,14 @@
 
 Date: 2026-09-17
 
+> **Design change, 2026-09-18.** The browser was first built to look like WinRAR,
+> which is what the original brief asked for. It is now built from stock AppKit
+> instead: `NSToolbar` with grouped items, a sidebar split item, the window subtitle
+> for the location, a search toolbar item for the filter. On macOS 26 and later the
+> system renders those with Liquid Glass and the scroll edge effect without the app
+> drawing any of it. The descriptions of a WinRAR-style command strip and address row
+> below are kept for the record but no longer describe the app.
+
 ## 1. Product behaviour (what we are building)
 
 Two modes, chosen at launch:

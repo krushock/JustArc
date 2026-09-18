@@ -13,15 +13,23 @@ the last job finishes. Encrypted archives prompt for a password, with an option 
 remember it in the login keychain. Hold Option while opening to browse instead.
 
 **Browser window**
-Command strip, address row with an archive-wide filter, sortable file list with
-Name, Size, Packed, Type, Modified and CRC32 columns, an optional folder tree, and
-a two-pane status bar. A bare launch opens an empty archive you can drag files into
-and then save.
+A sidebar of folders beside a sortable list with Name, Size, Packed, Type, Modified
+and CRC32 columns, under a unified toolbar, with a status bar along the bottom. A bare
+launch opens an empty archive you can drag files into and then save.
 
 Folders expand in place with a disclosure triangle, the way Finder's list view works,
 and double-clicking one still navigates into it. An archive that wraps everything in a
 single folder opens that folder for you. Space previews the selected file with Quick
 Look, Return opens it, and entries drag straight out to Finder.
+
+**The window is built from stock AppKit**, not from a skin. The commands live in an
+`NSToolbar` whose items are grouped into capsules, the folder tree is a sidebar split
+item, the location shows in the window's subtitle, and the filter is a search toolbar
+item. That matters for more than tidiness: on macOS 26 and later the system draws
+those components with Liquid Glass, the scroll edge effect and the grouped toolbar
+shapes on its own. Nothing here paints glass by hand, so the app follows the system
+as it changes rather than freezing one year's appearance. The minimum stays macOS 14,
+where the same components render in that system's style.
 
 **Formats**
 
@@ -90,6 +98,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 - **Filename encodings.** Zip archives written before UTF-8 was common can be re-read as
   CP866, Shift JIS and the rest.
 - **English and Russian.** The interface follows the system language.
+- **Settings** is a standard tabbed settings window, and About is the system panel.
 
 ## Debugging
 

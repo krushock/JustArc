@@ -112,8 +112,8 @@ enum MainMenuBuilder {
             add(menu, "Back", #selector(ArchiveBrowserViewController.goBack(_:)), "[")
             add(menu, "Forward", #selector(ArchiveBrowserViewController.goForward(_:)), "]")
             menu.addItem(.separator())
-            add(menu, "Show Folder Tree", #selector(ArchiveBrowserViewController.toggleFolderTree(_:)), "t",
-                modifiers: [.command, .option])
+            add(menu, "Show Sidebar", #selector(ArchiveBrowserViewController.toggleFolderTree(_:)), "s",
+                modifiers: [.command, .control])
             menu.addItem(textEncodingMenuItem())
             add(menu, "Reload", #selector(ArchiveBrowserViewController.reloadArchive(_:)), "r",
                 modifiers: [.command, .option])

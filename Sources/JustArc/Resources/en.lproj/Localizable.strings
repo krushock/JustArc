@@ -29,6 +29,7 @@
 "Add Files…" = "Add Files…";
 "Adding to %@" = "Adding to %@";
 "Always do this" = "Always do this";
+"Archive" = "Archive";
 "Archive Information" = "Archive Information";
 "Archive size: %@" = "Archive size: %@";
 "Ask every time" = "Ask every time";
@@ -100,7 +101,7 @@
 "Filename Encoding" = "Filename Encoding";
 "Files: %@" = "Files: %@";
 "Filter" = "Filter";
-"Find" = "Find";
+"Filter the list" = "Filter the list";
 "Find…" = "Find…";
 "Folder" = "Folder";
 "Folders" = "Folders";
@@ -109,10 +110,10 @@
 "Format: %@" = "Format: %@";
 "Forward" = "Forward";
 "Found at %@" = "Found at %@";
-"Go to the enclosing folder" = "Go to the enclosing folder";
 "Help" = "Help";
 "Hide JustArc" = "Hide JustArc";
 "Hide Others" = "Hide Others";
+"Hide Sidebar" = "Hide Sidebar";
 "ISO Image" = "ISO Image";
 "If a file exists:" = "If a file exists:";
 "If a folder exists:" = "If a folder exists:";
@@ -120,6 +121,7 @@
 "Install RARLAB's command line tool, then point JustArc at it in Settings." = "Install RARLAB's command line tool, then point JustArc at it in Settings.";
 "Invert Selection" = "Invert Selection";
 "It contains %@ items totalling %@. Extract it anyway?" = "It contains %@ items totalling %@. Extract it anyway?";
+"Item" = "Item";
 "Japanese (Shift JIS)" = "Japanese (Shift JIS)";
 "JustArc" = "JustArc";
 "JustArc Settings" = "JustArc Settings";
@@ -143,6 +145,7 @@
 "Modified" = "Modified";
 "Move the archive to the Trash afterwards" = "Move the archive to the Trash afterwards";
 "Name" = "Name";
+"Navigate" = "Navigate";
 "New Archive" = "New Archive";
 "New archives" = "New archives";
 "No" = "No";
@@ -202,7 +205,7 @@
 "Set Password…" = "Set Password…";
 "Settings…" = "Settings…";
 "Show All" = "Show All";
-"Show Folder Tree" = "Show Folder Tree";
+"Show Sidebar" = "Show Sidebar";
 "Show password" = "Show password";
 "Simplified Chinese (GBK)" = "Simplified Chinese (GBK)";
 "Size" = "Size";
@@ -257,6 +260,7 @@
 "Total %@ files, %@" = "Total %@ files, %@";
 "Total 1 file, %@" = "Total 1 file, %@";
 "Traditional Chinese (Big5)" = "Traditional Chinese (Big5)";
+"Transfer" = "Transfer";
 "Type" = "Type";
 "Ultra" = "Ultra";
 "Unicode (UTF-8)" = "Unicode (UTF-8)";

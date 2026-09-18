@@ -19,11 +19,16 @@ final class FolderTreeView: NSObject {
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("folder"))
         column.title = L("Folders")
         column.width = 190
+        outlineView.autosaveExpandedItems = false
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column
         outlineView.headerView = nil
-        outlineView.rowHeight = 20
+        outlineView.rowSizeStyle = .default
         outlineView.style = .sourceList
+        outlineView.floatsGroupRows = false
+        outlineView.indentationPerLevel = 12
+        outlineView.backgroundColor = .clear
+        outlineView.selectionHighlightStyle = .sourceList
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.autoresizesOutlineColumn = true

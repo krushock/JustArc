@@ -35,7 +35,7 @@ enum Preferences {
             Key.excludeMacMetadata: true,
             Key.defaultFormat: "zip",
             Key.defaultLevel: 5,
-            Key.showFolderTree: false,
+            Key.showFolderTree: true,
             Key.rememberPasswords: false,
         ])
     }
