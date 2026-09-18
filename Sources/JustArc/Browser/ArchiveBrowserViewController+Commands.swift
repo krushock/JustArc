@@ -424,6 +424,8 @@ extension ArchiveBrowserViewController {
                                             cancellation: cancellation, progress: progress)
             }
             if done != nil {
+                RecentsRecorder.note(url)
+                onArchiveChange?(url)
                 reloadFromSession()
             }
         }

@@ -61,7 +61,7 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
         sidebarItem.canCollapse = true
         sidebarItem.allowsFullHeightLayout = true
         sidebarItem.titlebarSeparatorStyle = .none
-        sidebarItem.isCollapsed = !Preferences.showFolderTree
+        sidebarItem.isCollapsed = !Preferences.showSidebar
 
         let contentItem = NSSplitViewItem(viewController: browser)
         contentItem.minimumThickness = 460
@@ -81,20 +81,20 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
         browser.onLocationChange = { [weak window] path in
             window?.subtitle = path.isEmpty ? "" : path.replacingOccurrences(of: "/", with: " › ")
         }
-        browser.onTreeChange = { [weak self] tree, name, path in
-            self?.sidebar.reload(tree: tree, archiveName: name)
-            self?.sidebar.select(path: path)
+        browser.onArchiveChange = { [weak self] url in
+            self?.sidebar.currentArchive = url
         }
         browser.onToggleSidebar = { [weak self] in
             guard let self else { return }
             sidebarItem.animator().isCollapsed.toggle()
-            Preferences.showFolderTree = !sidebarItem.isCollapsed
+            Preferences.showSidebar = !sidebarItem.isCollapsed
         }
         browser.onFocusFilter = { [weak self] in
             self?.searchItem?.beginSearchInteraction()
         }
-        sidebar.onSelect = { [weak self] path in
-            self?.browser.navigate(to: path)
+        sidebar.currentArchive = session.archiveURL
+        sidebar.onOpen = { url in
+            (NSApp.delegate as? AppDelegate)?.openInBrowser(url)
         }
     }
 
@@ -105,6 +105,12 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
         } else {
             window.center()
         }
+    }
+
+    /// An untitled window nobody has touched. Opening an archive takes its place
+    /// instead of leaving an empty window behind, the way TextEdit treats a blank page.
+    var isPristine: Bool {
+        session.isUntitled && !session.hasUnsavedChanges
     }
 
     func loadArchive() { browser.loadArchive() }

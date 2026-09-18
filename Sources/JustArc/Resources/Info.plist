@@ -116,6 +116,21 @@
 
 	<key>CFBundleDocumentTypes</key>
 	<array>
+		<!-- Any file or folder, ranked None: JustArc never becomes the default app for
+		     these, but the Dock accepts them when dropped on the icon, which is how a
+		     new archive gets started. Without it the Dock refuses the drop. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Files to Archive</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>None</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Archive</string>

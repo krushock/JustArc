@@ -4,10 +4,10 @@ import JustArcCore
 /// Builds the menu bar in code, mirroring WinRAR's File / Commands split
 /// while keeping the macOS-standard App, Edit, Window and Help menus.
 enum MainMenuBuilder {
-    static func build() -> NSMenu {
+    static func build(recentMenu: NSMenu) -> NSMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(appMenuItem())
-        mainMenu.addItem(fileMenuItem())
+        mainMenu.addItem(fileMenuItem(recentMenu: recentMenu))
         mainMenu.addItem(editMenuItem())
         mainMenu.addItem(commandsMenuItem())
         mainMenu.addItem(viewMenuItem())
@@ -56,10 +56,12 @@ enum MainMenuBuilder {
         }
     }
 
-    private static func fileMenuItem() -> NSMenuItem {
+    private static func fileMenuItem(recentMenu: NSMenu) -> NSMenuItem {
         submenu("File") { menu in
             add(menu, "New Archive", #selector(AppDelegate.newArchiveWindow(_:)), "n")
             add(menu, "Open…", #selector(AppDelegate.openDocument(_:)), "o")
+            let recent = add(menu, "Open Recent", nil)
+            recent.submenu = recentMenu
             menu.addItem(.separator())
             add(menu, "Close", #selector(NSWindow.performClose(_:)), "w")
             add(menu, "Save", #selector(ArchiveBrowserViewController.saveArchive(_:)), "s")

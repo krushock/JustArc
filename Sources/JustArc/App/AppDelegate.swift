@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var didReceiveOpenRequest = false
     private var preferencesController: PreferencesWindowController?
     private var servicesProvider: ServicesProvider?
+    private let recentMenu = RecentMenuController()
     private let updates = UpdateController()
 
     // MARK: - Lifecycle
@@ -16,7 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Preferences.registerDefaults()
         Diagnostics.log("launch: ui language \(Bundle.main.preferredLocalizations.first ?? "?"), "
                         + "\"Extract To\" reads as \"\(L("Extract To"))\"")
-        NSApp.mainMenu = MainMenuBuilder.build()
+        recentMenu.open = { [weak self] url in self?.openInBrowser(url) }
+        NSApp.mainMenu = MainMenuBuilder.build(recentMenu: recentMenu.menu)
         quickExtract.onAllJobsFinished = { [weak self] in
             self?.terminateIfNothingLeftToShow()
         }
@@ -50,20 +52,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let archives = urls.filter { FormatRegistry.isArchive($0) }
         let others = urls.filter { !FormatRegistry.isArchive($0) }
 
-        // Non-archives dropped on the app icon become the contents of a new archive.
+        // Other files dropped on the app become the contents of an archive, going into
+        // the empty window when there is one rather than opening a second.
         if !others.isEmpty {
-            let controller = makeBrowserWindow(for: nil)
+            let controller = browserControllers.first(where: \.isPristine)
+                ?? makeBrowserWindow(for: nil)
             controller.session.stage(items: others)
             controller.reloadFromSession()
+            controller.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
 
         guard !archives.isEmpty else { return }
 
-        if shouldBrowseRatherThanExtract() {
+        let browse = shouldBrowseRatherThanExtract()
+        Diagnostics.log("open request: \(archives.count) archive(s), "
+                        + (browse ? "opening in a window" : "extracting"))
+        if browse {
             for archive in archives { openInBrowser(archive) }
+            NSApp.activate(ignoringOtherApps: true)
         } else {
+            for archive in archives { RecentsRecorder.note(archive) }
             quickExtract.enqueue(archives)
         }
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        recentMenu.dockMenu()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -80,11 +95,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return true
     }
 
-    /// Holding Option at launch flips whichever behaviour is configured,
-    /// matching the "open in the app instead of extracting" shortcut people expect.
+    /// Double-clicking an archive while JustArc is not in use unpacks it and gets out
+    /// of the way. Once a window is open, though, the user is working in the app, and
+    /// an archive dropped on the Dock icon should open in it rather than be unpacked
+    /// behind their back. Holding Option flips whichever of the two would happen.
     private func shouldBrowseRatherThanExtract() -> Bool {
-        let optionHeld = NSEvent.modifierFlags.contains(.option)
-        return Preferences.browseInsteadOfExtracting != optionHeld
+        let workingInApp = browserControllers.contains { $0.window?.isVisible == true }
+        let browse = Preferences.browseInsteadOfExtracting || workingInApp
+        return browse != NSEvent.modifierFlags.contains(.option)
     }
 
     private func terminateIfNothingLeftToShow() {
@@ -122,8 +140,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: - Window management
 
+    /// - Parameter previous: an untouched window to replace. The new window takes its
+    ///   exact frame and the old one closes, so the archive appears to open in place.
     @discardableResult
-    func makeBrowserWindow(for archive: URL?) -> ArchiveWindowController {
+    func makeBrowserWindow(for archive: URL?,
+                           replacing previous: ArchiveWindowController? = nil) -> ArchiveWindowController {
         let controller = ArchiveWindowController(archive: archive)
         controller.onClose = { [weak self, weak controller] in
             guard let self, let controller else { return }
@@ -131,16 +152,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             self.terminateIfNothingLeftToShow()
         }
         browserControllers.append(controller)
+
+        if let previous, let frame = previous.window?.frame {
+            controller.window?.setFrame(frame, display: false)
+        }
         controller.showWindow(nil)
+        // Closing directly skips the unsaved-changes question, which is right here:
+        // the window was checked to be untouched before it was chosen.
+        previous?.window?.close()
         return controller
     }
 
     func openInBrowser(_ archive: URL) {
-        if let existing = browserControllers.first(where: { $0.session.archiveURL == archive }) {
+        let wanted = archive.standardizedFileURL
+        if let existing = browserControllers.first(where: {
+            $0.session.archiveURL?.standardizedFileURL == wanted }) {
             existing.window?.makeKeyAndOrderFront(nil)
             return
         }
-        let controller = makeBrowserWindow(for: archive)
+        let pristine = browserControllers.first(where: \.isPristine)
+        Diagnostics.log("opening \(archive.lastPathComponent) "
+                        + (pristine != nil ? "in place of the empty window" : "in a new window"))
+        let controller = makeBrowserWindow(for: archive, replacing: pristine)
         controller.loadArchive()
     }
 

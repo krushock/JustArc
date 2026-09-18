@@ -35,7 +35,7 @@ enum Preferences {
             Key.excludeMacMetadata: true,
             Key.defaultFormat: "zip",
             Key.defaultLevel: 5,
-            Key.showFolderTree: true,
+            Key.showSidebar: false,
             Key.rememberPasswords: false,
         ])
     }
@@ -52,7 +52,9 @@ enum Preferences {
         static let excludeMacMetadata = "ExcludeMacMetadata"
         static let defaultFormat = "DefaultFormat"
         static let defaultLevel = "DefaultLevel"
-        static let showFolderTree = "ShowFolderTree"
+        // A new key, since the sidebar now holds different things and the old
+        // stored choice was about the folder tree.
+        static let showSidebar = "ShowSidebar"
         static let rememberPasswords = "RememberPasswords"
     }
 
@@ -159,9 +161,9 @@ enum Preferences {
         set { defaults.set(newValue, forKey: Key.excludeMacMetadata) }
     }
 
-    static var showFolderTree: Bool {
-        get { defaults.bool(forKey: Key.showFolderTree) }
-        set { defaults.set(newValue, forKey: Key.showFolderTree) }
+    static var showSidebar: Bool {
+        get { defaults.bool(forKey: Key.showSidebar) }
+        set { defaults.set(newValue, forKey: Key.showSidebar) }
     }
 
     static var defaultFormatKey: String {

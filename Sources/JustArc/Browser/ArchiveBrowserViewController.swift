@@ -17,6 +17,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
 
     private let statusBar = ArchiveStatusBar()
     private let scrollView = NSScrollView()
+    private let emptyLabel = NSTextField(labelWithString: "")
     private let table = ArchiveOutlineView()
     private let listSource = ArchiveListDataSource()
 
@@ -43,8 +44,8 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     var onTitleChange: ((String, URL?) -> Void)?
     /// Where we are inside the archive, for the window subtitle.
     var onLocationChange: ((String) -> Void)?
-    /// The contents changed, so the sidebar needs rebuilding.
-    var onTreeChange: ((EntryTree, String, String) -> Void)?
+    /// Which archive this window shows, so the sidebar can mark it.
+    var onArchiveChange: ((URL?) -> Void)?
     var onToggleSidebar: (() -> Void)?
     var onFocusFilter: (() -> Void)?
 
@@ -145,6 +146,14 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
 
+        // Shown in place of an empty list, the way Mail says "No Message Selected".
+        emptyLabel.font = .preferredFont(forTextStyle: .title3)
+        emptyLabel.textColor = .tertiaryLabelColor
+        emptyLabel.alignment = .center
+        emptyLabel.isHidden = true
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(emptyLabel)
+
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -152,7 +161,23 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scrollView.widthAnchor.constraint(equalTo: stack.widthAnchor),
             statusBar.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
+            emptyLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
         ])
+    }
+
+    private func updateEmptyState() {
+        let isEmpty = table.numberOfRows == 0
+        emptyLabel.isHidden = !isEmpty
+        guard isEmpty else { return }
+        if listSource.isFiltering {
+            emptyLabel.stringValue = L("No Matches")
+        } else if session.isUntitled {
+            emptyLabel.stringValue = L("Drop files here to start an archive")
+        } else {
+            emptyLabel.stringValue = L("This archive is empty")
+        }
     }
 
     private func wireCallbacks() {
@@ -193,6 +218,8 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         while true {
             do {
                 try await loadWithDownloadPanel()
+                if let url = session.archiveURL { RecentsRecorder.note(url) }
+                onArchiveChange?(session.archiveURL)
                 reloadList()
                 refreshChrome()
                 return
@@ -259,7 +286,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         expandSingleRootFolder()
         Diagnostics.log("list: \(session.visibleEntries.count) entries, "
                         + "\(table.numberOfRows) rows at \"\(currentPath)\"")
-        onTreeChange?(session.tree, session.displayName, currentPath)
+        updateEmptyState()
         refreshChrome()
     }
 
@@ -416,7 +443,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             return ArchiveTextEncoding.isOverridable(session.format) && !session.isUntitled
         }
         if menuItem.action == #selector(toggleFolderTree(_:)) {
-            menuItem.title = Preferences.showFolderTree ? L("Hide Sidebar") : L("Show Sidebar")
+            menuItem.title = Preferences.showSidebar ? L("Hide Sidebar") : L("Show Sidebar")
             return true
         }
         return canPerform(menuItem.action)
