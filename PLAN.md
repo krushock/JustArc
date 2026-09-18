@@ -9,6 +9,10 @@ Date: 2026-09-17
 > system renders those with Liquid Glass and the scroll edge effect without the app
 > drawing any of it. The descriptions of a WinRAR-style command strip and address row
 > below are kept for the record but no longer describe the app.
+>
+> The first attempt at this still looked old, and the reason was not the code: SwiftPM
+> stamped the executable with the deployment target (14.0) as its SDK version, and
+> macOS picks the design from that stamp. The build now records the real SDK.
 
 ## 1. Product behaviour (what we are building)
 

@@ -10,7 +10,7 @@ import JustArcCore
 /// This controller owns the list and the status bar, and nothing else.
 @MainActor
 final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation,
-                                          NSToolbarItemValidation {
+                                          NSToolbarItemValidation, CommandAvailability {
     let session: ArchiveSession
     /// Follows the session, so a disk image window drives hdiutil.
     var engine: ArchiveEngine { session.engine }
@@ -71,7 +71,9 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         buildTable()
         assemble()
         wireCallbacks()
-        refreshChrome()
+        // An untitled window never loads an archive, so without this it never draws its
+        // list either, and the empty-window message stayed hidden.
+        reloadList()
     }
 
     private func buildTable() {
@@ -416,11 +418,16 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     /// never disagree about what is available.
     func canPerform(_ action: Selector?) -> Bool {
         switch action {
-        case #selector(addFiles(_:)), #selector(deleteSelected(_:)), #selector(renameSelected(_:)):
+        case #selector(addFiles(_:)):
             return session.canModifyContents
-        case #selector(saveArchive(_:)), #selector(saveArchiveAs(_:)):
-            return session.canSaveAs
-        case #selector(testArchive(_:)), #selector(setPassword(_:)),
+        case #selector(deleteSelected(_:)), #selector(renameSelected(_:)):
+            return session.canModifyContents && !selectedNodesForCommand().isEmpty
+        case #selector(saveArchive(_:)):
+            // Saving in place only means something when there is something unsaved.
+            return session.hasUnsavedChanges
+        case #selector(saveArchiveAs(_:)):
+            return !session.visibleEntries.isEmpty
+        case #selector(testArchive(_:)), #selector(setPassword(_:)), #selector(showArchiveInfo(_:)),
              #selector(extractSelected(_:)), #selector(extractAll(_:)):
             return !session.isUntitled
         case #selector(goBack(_:)):

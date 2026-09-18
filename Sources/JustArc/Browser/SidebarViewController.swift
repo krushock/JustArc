@@ -154,12 +154,21 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let identifier = NSUserInterfaceItemIdentifier("sidebarRecent")
         let cell = outlineView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView
             ?? makeCell(identifier: identifier, withImage: true)
-        cell.textField?.stringValue = FormatRegistry.baseName(for: url)
+        // The full name, not the name without its extension: Project.zip and
+        // Project.7z are different archives and read identically otherwise.
+        cell.textField?.stringValue = displayName(for: url)
         cell.toolTip = url.path
         let icon = NSWorkspace.shared.icon(forFile: url.path)
         icon.size = NSSize(width: 18, height: 18)
         cell.imageView?.image = icon
         return cell
+    }
+
+    /// Two archives with the same name are told apart by their folder, as Finder does.
+    private func displayName(for url: URL) -> String {
+        let name = url.lastPathComponent
+        let clashes = recents.filter { ($0 as URL).lastPathComponent == name }.count > 1
+        return clashes ? "\(name) — \(url.deletingLastPathComponent().lastPathComponent)" : name
     }
 
     private func makeCell(identifier: NSUserInterfaceItemIdentifier, withImage: Bool) -> NSTableCellView {

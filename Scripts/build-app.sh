@@ -19,6 +19,17 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
 
 cp "$BIN/JustArc" "$APP/Contents/MacOS/JustArc"
+
+# SwiftPM compiles against the current SDK but stamps the binary with the deployment
+# target as its SDK version. macOS picks an app's appearance from that stamp, so a
+# binary claiming the macOS 14 SDK is shown the old design even on macOS 26, with no
+# Liquid Glass in the toolbar. Record the SDK it was actually built with; the
+# deployment target, and so the oldest macOS it runs on, is left alone.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+MIN_VERSION="$(otool -l "$APP/Contents/MacOS/JustArc" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')"
+xcrun vtool -set-build-version macos "$MIN_VERSION" "$SDK_VERSION" -replace \
+  -output "$APP/Contents/MacOS/JustArc" "$APP/Contents/MacOS/JustArc" 2>/dev/null
+echo "Stamped SDK $SDK_VERSION (runs on macOS $MIN_VERSION and later)"
 cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Vendor/7zz" "$APP/Contents/Helpers/7zz"
 cp "$ROOT/Vendor/7zz-License.txt" "$APP/Contents/Resources/7-Zip-License.txt"

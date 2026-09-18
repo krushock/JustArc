@@ -37,6 +37,25 @@ shapes on its own. Nothing here paints glass by hand, so the app follows the sys
 as it changes rather than freezing one year's appearance. The minimum stays macOS 14,
 where the same components render in that system's style.
 
+**One thing makes or breaks this.** macOS decides whether an app gets the new design
+from the SDK version stamped into its executable, not from the SDK it was compiled
+against. SwiftPM compiles against the current SDK but stamps the deployment target in
+its place, so the binary claimed the macOS 14 SDK and was shown the old flat toolbar
+even on macOS 27. `build-app.sh` rewrites the stamp to the SDK actually used, with
+`vtool`, and leaves the deployment target alone. Check it with:
+
+```bash
+otool -l build/JustArc.app/Contents/MacOS/JustArc | grep -A5 LC_BUILD_VERSION
+```
+
+The `sdk` line must match the installed SDK. If it shows the deployment target, the
+window will look like an app from years ago.
+
+To check the appearance without screen recording access, set `JUSTARC_SNAPSHOT` to a
+path and the first window renders itself to a PNG and quits. It shows layout and the
+glass controls faithfully; vibrant materials such as the sidebar's translucency and
+source-list selection come out flat or black, so those still need a look on screen.
+
 **Formats**
 
 | | Read | Write |

@@ -15,7 +15,7 @@ enum ArchiveToolbar {
     /// Bumped whenever the default layout changes. The toolbar remembers the user's
     /// arrangement under this name, and a remembered arrangement would otherwise keep
     /// the old buttons and the old display mode on screen.
-    static let identifier = "JustArcBrowserToolbar.v2"
+    static let identifier = "JustArcBrowserToolbar.v4"
 
     enum ID {
         static let navigation = NSToolbarItem.Identifier("navigation")
@@ -117,16 +117,19 @@ enum ArchiveToolbar {
         return item
     }
 
-    static func makeGroup(for identifier: NSToolbarItem.Identifier) -> NSToolbarItemGroup? {
+    /// Paired commands become one divided capsule, not two separate buttons.
+    static func makeGroup(for identifier: NSToolbarItem.Identifier,
+                          handler: AnyObject?) -> NSToolbarItem? {
         guard let group = groups[identifier] else { return nil }
-        let toolbarGroup = NSToolbarItemGroup(itemIdentifier: identifier)
-        toolbarGroup.label = group.label
-        toolbarGroup.paletteLabel = group.label
-        toolbarGroup.subitems = group.members.compactMap { makeItem(for: $0) }
-        toolbarGroup.controlRepresentation = .expanded
-        toolbarGroup.selectionMode = .momentary
-        toolbarGroup.isNavigational = identifier == ID.navigation
-        return toolbarGroup
+        let segments = group.members.compactMap { member -> CommandSegmentItem.Segment? in
+            guard let command = commands[member] else { return nil }
+            return CommandSegmentItem.Segment(label: command.label, symbol: command.symbol,
+                                              action: command.action)
+        }
+        let item = CommandSegmentItem(identifier: identifier, label: group.label,
+                                      segments: segments, handler: handler)
+        item.isNavigational = identifier == ID.navigation
+        return item
     }
 
     static func makeSearchItem(delegate: NSSearchFieldDelegate) -> NSSearchToolbarItem {

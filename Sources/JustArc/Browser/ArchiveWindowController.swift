@@ -24,14 +24,13 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
         self.session = session
         self.browser = ArchiveBrowserViewController(session: session)
 
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 620),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1060, height: 640),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable,
                                           .fullSizeContentView],
                               backing: .buffered,
                               defer: false)
         window.minSize = NSSize(width: 680, height: 380)
         window.isReleasedWhenClosed = false
-        window.setFrameAutosaveName("JustArcArchiveWindow")
         // Unified puts the title beside the toolbar items rather than on its own row,
         // which is the shape every stock app uses now.
         window.toolbarStyle = .unified
@@ -40,13 +39,37 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
 
         buildSplitView()
         window.contentViewController = splitController
+        // Assigning a content view controller sizes the window to that controller's
+        // view, which is narrower than the toolbar needs, so the size is set again.
+        window.setContentSize(NSSize(width: 1060, height: 640))
         window.toolbar = ArchiveToolbar.makeToolbar(delegate: self)
         window.delegate = self
+        window.setFrameAutosaveName("JustArcArchiveWindow.v2")
 
         wireCallbacks(window: window)
         window.title = session.displayName
         window.representedURL = archive
         if archive == nil { window.center() } else { cascadeIfNeeded(window) }
+        scheduleSnapshotIfRequested()
+    }
+
+    /// Debugging aid: with JUSTARC_SNAPSHOT set to a path, the first window renders
+    /// itself, title bar and toolbar included, to a PNG and the app quits. The
+    /// appearance can then be checked from a terminal without screen recording access.
+    private func scheduleSnapshotIfRequested() {
+        guard let path = ProcessInfo.processInfo.environment["JUSTARC_SNAPSHOT"],
+              !path.isEmpty else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let window = self?.window,
+                  let frameView = window.contentView?.superview else { return }
+            frameView.layoutSubtreeIfNeeded()
+            guard let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return }
+            frameView.cacheDisplay(in: frameView.bounds, to: rep)
+            if let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: path))
+            }
+            NSApp.terminate(nil)
+        }
     }
 
     @available(*, unavailable)
@@ -134,7 +157,7 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
             searchItem = item
             return item
         }
-        if let group = ArchiveToolbar.makeGroup(for: identifier) { return group }
+        if let group = ArchiveToolbar.makeGroup(for: identifier, handler: browser) { return group }
         // Standard identifiers such as toggleSidebar and the tracking separator are
         // supplied by AppKit when the delegate returns nothing.
         return ArchiveToolbar.makeItem(for: identifier)
