@@ -187,6 +187,11 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         table.onPreview = { [weak self] in self?.toggleQuickLook(nil) }
         table.onDelete = { [weak self] in self?.deleteSelected(nil) }
         table.onGoUp = { [weak self] in self?.goUp(nil) }
+        // The selection rectangle skips the ".." row, which is not a file.
+        table.isRowSelectable = { [weak self] row in
+            guard let self else { return false }
+            return listSource.node(for: table.item(atRow: row)) != nil
+        }
 
         listSource.onSelectionChange = { [weak self] in self?.refreshStatusBar() }
         listSource.onSortChange = { [weak self] column, ascending in
@@ -436,8 +441,11 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             return historyIndex + 1 < history.count
         case #selector(goUp(_:)):
             return !currentPath.isEmpty
-        case #selector(openSelectedFile(_:)), #selector(toggleQuickLook(_:)):
+        case #selector(openSelectedFile(_:)):
             return !selectedNodesForCommand().isEmpty
+        case #selector(toggleQuickLook(_:)):
+            // Quick Look previews files; with only folders selected it has nothing to show.
+            return selectedNodesForCommand().contains { !$0.isDirectory }
         default:
             return true
         }

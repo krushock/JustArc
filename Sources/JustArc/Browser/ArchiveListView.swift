@@ -41,12 +41,28 @@ enum ArchiveColumn: String, CaseIterable {
 /// while double-clicking still navigates into them.
 ///
 /// Routes the keys people expect from a file list: Return opens, Space previews,
-/// Delete removes, and Command-Delete goes up a level.
+/// Delete removes, and Command-Up goes up a level.
+///
+/// It also draws a selection rectangle, as the desktop and Finder do, which a table
+/// view has no notion of. Dragging from empty space, or across any column but Name,
+/// draws the rectangle; dragging by a name still drags files out, as in Finder's list
+/// view. A click that does not move is left to the table, so ordinary selection,
+/// double-clicks and the disclosure triangles behave exactly as before.
 final class ArchiveOutlineView: NSOutlineView {
     var onOpen: (() -> Void)?
     var onPreview: (() -> Void)?
     var onDelete: (() -> Void)?
     var onGoUp: (() -> Void)?
+
+    /// Which rows the rectangle may select, so the ".." row is left out.
+    var isRowSelectable: ((Int) -> Bool)?
+    /// The column whose content drags files instead of drawing a rectangle.
+    var fileDragColumn = NSUserInterfaceItemIdentifier(ArchiveColumn.name.rawValue)
+
+    private var marquee: MarqueeView?
+    private var marqueeStart = NSPoint.zero
+    private var marqueeInitial = IndexSet()
+    private var marqueeMode = RubberBandSelection.Mode.replace
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
@@ -68,6 +84,139 @@ final class ArchiveOutlineView: NSOutlineView {
     override func validateProposedFirstResponder(_ responder: NSResponder,
                                                  for event: NSEvent?) -> Bool {
         true
+    }
+
+    // MARK: - Selection rectangle
+
+    override func mouseDown(with event: NSEvent) {
+        // Double-clicks, and anything with Control held, keep their usual meaning.
+        guard event.clickCount == 1, !event.modifierFlags.contains(.control) else {
+            return super.mouseDown(with: event)
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        if row >= 0 {
+            let column = column(at: point)
+            if column >= 0, tableColumns[column].identifier == fileDragColumn {
+                return super.mouseDown(with: event)
+            }
+        }
+        guard let firstDrag = waitForDrag(after: event) else {
+            return super.mouseDown(with: event)
+        }
+        trackRectangle(from: point, modifiers: event.modifierFlags, firstDrag: firstDrag)
+    }
+
+    /// Returns the first movement past the drag threshold, or nil when the button came
+    /// up first. In that case the button-up is put back, so the table's own handling
+    /// receives a complete click instead of waiting for one that already happened.
+    private func waitForDrag(after mouseDown: NSEvent) -> NSEvent? {
+        guard let window else { return nil }
+        let start = mouseDown.locationInWindow
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp {
+                NSApp.postEvent(next, atStart: true)
+                return nil
+            }
+            if RubberBandSelection.isDrag(from: start, to: next.locationInWindow) {
+                return next
+            }
+        }
+        return nil
+    }
+
+    private func trackRectangle(from start: NSPoint, modifiers: NSEvent.ModifierFlags, firstDrag: NSEvent) {
+        guard let window else { return }
+        window.makeFirstResponder(self)
+        beginRectangle(at: start,
+                       shift: modifiers.contains(.shift),
+                       command: modifiers.contains(.command))
+        var pointer = firstDrag.locationInWindow
+        updateRectangle(to: convert(pointer, from: nil))
+
+        // Periodic events keep the list scrolling while the pointer rests past an edge,
+        // since no drag events arrive when the mouse is still.
+        NSEvent.startPeriodicEvents(afterDelay: 0.05, withPeriod: 0.05)
+        defer {
+            NSEvent.stopPeriodicEvents()
+            endRectangle()
+        }
+
+        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp, .periodic]) {
+            switch event.type {
+            case .leftMouseUp:
+                return
+            case .leftMouseDragged:
+                pointer = event.locationInWindow
+                autoscroll(with: event)
+            case .periodic:
+                if let resting = NSEvent.mouseEvent(with: .leftMouseDragged, location: pointer,
+                                                    modifierFlags: [], timestamp: event.timestamp,
+                                                    windowNumber: window.windowNumber, context: nil,
+                                                    eventNumber: 0, clickCount: 1, pressure: 1) {
+                    autoscroll(with: resting)
+                }
+            default:
+                continue
+            }
+            // Converting again after scrolling is what lets the rectangle grow past the
+            // part of the list that was visible when the drag started.
+            updateRectangle(to: convert(pointer, from: nil))
+        }
+    }
+
+    func beginRectangle(at point: NSPoint, shift: Bool, command: Bool) {
+        marqueeStart = point
+        marqueeMode = RubberBandSelection.mode(shift: shift, command: command)
+        marqueeInitial = marqueeMode == .replace ? IndexSet() : selectedRowIndexes
+        if marqueeMode == .replace { deselectAll(nil) }
+        let view = MarqueeView(frame: NSRect(origin: point, size: .zero))
+        addSubview(view)
+        marquee = view
+    }
+
+    func updateRectangle(to point: NSPoint) {
+        guard let marquee else { return }
+        let rect = RubberBandSelection.rect(from: marqueeStart, to: point)
+        marquee.frame = rect
+        // Row views are added lazily as the list scrolls, which would put them above
+        // the rectangle, so it is moved back to the front each time.
+        addSubview(marquee, positioned: .above, relativeTo: nil)
+
+        let range = rows(in: rect)
+        let touched = range.length > 0
+            ? IndexSet(integersIn: range.location..<(range.location + range.length))
+            : IndexSet()
+        let selection = RubberBandSelection.selection(
+            initial: marqueeInitial, touched: touched, mode: marqueeMode,
+            selectable: { [weak self] row in self?.isRowSelectable?(row) ?? true })
+        if selection != selectedRowIndexes {
+            selectRowIndexes(selection, byExtendingSelection: false)
+        }
+    }
+
+    func endRectangle() {
+        marquee?.removeFromSuperview()
+        marquee = nil
+    }
+}
+
+/// The translucent rectangle itself. Drawn from the label colour so it reads in both
+/// light and dark appearances, and ignores the mouse so it never gets in the way.
+final class MarqueeView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // A bezier path composites over what is beneath; filling the rect directly
+        // would copy the translucent colour in and punch a hole through the rows.
+        let path = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
+        NSColor.labelColor.withAlphaComponent(0.1).setFill()
+        path.fill()
+        NSColor.labelColor.withAlphaComponent(0.4).setStroke()
+        path.lineWidth = 1
+        path.stroke()
     }
 }
 

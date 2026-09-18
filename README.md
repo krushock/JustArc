@@ -29,6 +29,10 @@ and double-clicking one still navigates into it. An archive that wraps everythin
 single folder opens that folder for you. Space previews the selected file with Quick
 Look, Return opens it, and entries drag straight out to Finder.
 
+Dragging from empty space, or across any column but Name, draws a selection rectangle
+the way the desktop does. Shift adds to the selection and Command toggles rows. Drag
+past the top or bottom and the list scrolls. Dragging by a name still drags files out.
+
 **The window is built from stock AppKit**, not from a skin. The commands live in an
 `NSToolbar` with names beneath the icons, the sidebar is a sidebar split item, the
 location shows in the window's subtitle, and the filter is a search toolbar item. That matters for more than tidiness: on macOS 26 and later the system draws
