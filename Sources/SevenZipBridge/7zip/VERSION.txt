@@ -1,0 +1,2 @@
+7-Zip 25.01, from https://www.7-zip.org/a/7z2501-src.tar.xz
+ed087f83ee789c1ea5f39c464c55a5c9d4008deb0efe900814f2df262b82c36e  /tmp/7zsrc/src.tar.xz

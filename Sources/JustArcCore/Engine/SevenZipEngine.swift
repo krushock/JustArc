@@ -1,65 +1,27 @@
 import Foundation
 
-/// Drives the bundled 7zz binary. Handles the nested-stream formats
-/// (`.tar.gz`, `.tar.xz`, …) by piping the outer decompressor into a tar reader.
+/// Reads and writes archives through 7-Zip's format library, loaded into the process.
+/// Nothing runs as a subprocess, so passwords never appear in a command line.
+///
+/// A compressed stream wrapping a tar (`.tar.gz`, `.tar.xz`, …) is unwrapped into a
+/// temporary tar once and read from there; see `NestedTarCache`.
 public struct SevenZipEngine: ArchiveEngine {
     public init() {}
-
-    // Formats that are a compressed stream wrapping a tar.
-    private static let alwaysNestedTar: Set<String> = ["tgz", "tbz2", "txz", "tzst", "taz"]
-    // Single-stream compressors that may or may not hold a tar.
-    private static let singleStreamCompressors: Set<String> = ["gzip", "bzip2", "xz", "zstd", "z", "lz4"]
-
-    private static let commonFlags = ["-y", "-sccUTF-8", "-scsUTF-8"]
 
     // MARK: - Listing
 
     public func list(archive: URL, password: String?, encodingCodePage: Int? = nil) async throws -> ArchiveListing {
-        let tool = try EngineLocator.requireSevenZip()
-        var arguments = ["l", "-slt"] + Self.commonFlags
-        arguments.append(passwordFlag(password))
-        if let encodingCodePage { arguments.append("-mcp=\(encodingCodePage)") }
-        arguments.append(archive.path)
-
-        let result = try await ProcessRunner.run(executable: tool, arguments: arguments)
-        if result.exitCode != 0 {
-            throw Self.classify(result: result, password: password)
+        CodePageMemory.remember(encodingCodePage, for: archive)
+        return try await Self.blocking {
+            let readable = try Readable.open(archive, password: password, codePage: encodingCodePage,
+                                             unwrapProgress: .silent)
+            var info = readable.bridge.info
+            if let outer = readable.outer {
+                info.formatName = "\(outer.info.formatName) / \(info.formatName)"
+                info.physicalSize = outer.info.physicalSize
+            }
+            return ArchiveListing(info: info, entries: readable.bridge.entries())
         }
-
-        var listing = SevenZipListParser.parse(result.standardOutput)
-        if needsNestedTarPass(archive: archive, listing: listing) {
-            listing = try await listNestedTar(archive: archive, outer: listing, password: password)
-        }
-        return listing
-    }
-
-    private func needsNestedTarPass(archive: URL, listing: ArchiveListing) -> Bool {
-        let key = FormatRegistry.format(for: archive)?.key ?? ""
-        if Self.alwaysNestedTar.contains(key) { return true }
-        guard Self.singleStreamCompressors.contains(key) else { return false }
-        // A single payload named *.tar means the real content is one level deeper.
-        guard listing.entries.count == 1, let only = listing.entries.first else { return false }
-        return only.path.lowercased().hasSuffix(".tar")
-    }
-
-    private func listNestedTar(archive: URL, outer: ArchiveListing, password: String?) async throws -> ArchiveListing {
-        let tool = try EngineLocator.requireSevenZip()
-        let result = try await ProcessRunner.runPipeline(
-            first: tool,
-            firstArguments: ["x", "-so", passwordFlag(password), archive.path] + Self.commonFlags,
-            second: tool,
-            secondArguments: ["l", "-slt", "-si", "-ttar"] + Self.commonFlags)
-
-        guard result.exitCode == 0 else {
-            // Fall back to the outer view rather than failing the open outright.
-            return outer
-        }
-        var inner = SevenZipListParser.parse(result.standardOutput)
-        inner.info.formatName = outer.info.formatName.isEmpty
-            ? inner.info.formatName
-            : "\(outer.info.formatName) / tar"
-        inner.info.physicalSize = outer.info.physicalSize
-        return inner
     }
 
     // MARK: - Extraction
@@ -72,85 +34,33 @@ public struct SevenZipEngine: ArchiveEngine {
                         flattenPaths: Bool = false,
                         cancellation: CancellationToken? = nil,
                         progress: ProgressHandler? = nil) async throws {
-        let tool = try EngineLocator.requireSevenZip()
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-
         if let entries, let unsafePath = PathSafety.firstUnsafePath(in: entries) {
             throw ArchiveError.unsafeEntry(unsafePath)
         }
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let codePage = CodePageMemory.codePage(for: archive)
 
-        let nested = try await isNestedTarArchive(archive)
-        let listFile = try entries.map { try writeListFile(for: $0) }
-        defer { if let listFile { try? FileManager.default.removeItem(at: listFile) } }
+        try await Self.blocking {
+            let whole = BridgeProgress(handler: progress, cancellation: cancellation)
+            let readable = try Readable.open(archive, password: password, codePage: codePage,
+                                             unwrapProgress: whole.slice(offset: 0, span: 0.5))
+            let indices = entries.map { Self.indices(of: $0, in: readable.bridge) }
+            if let indices, indices.isEmpty { return }
 
-        let command = flattenPaths ? "e" : "x"
-        let reporter = ProgressReporter(handler: progress)
-
-        let result: ProcessResult
-        if nested {
-            var inner = [command, "-si", "-ttar", "-o\(destination.path)",
-                         overwrite.sevenZipFlag, "-bsp1", "-bb1"] + Self.commonFlags
-            if let listFile { inner.append(contentsOf: ["-spd", "-i@\(listFile.path)"]) }
-            result = try await ProcessRunner.runPipeline(
-                first: tool,
-                firstArguments: ["x", "-so", passwordFlag(password), archive.path] + Self.commonFlags,
-                second: tool,
-                secondArguments: inner,
-                cancellation: cancellation,
-                onOutput: { reporter.consume($0) })
-        } else {
-            var arguments = [command, archive.path, "-o\(destination.path)",
-                             overwrite.sevenZipFlag, "-bsp1", "-bb1"] + Self.commonFlags
-            arguments.append(passwordFlag(password))
-            if let listFile { arguments.append(contentsOf: ["-spd", "-i@\(listFile.path)"]) }
-            result = try await ProcessRunner.run(executable: tool,
-                                                 arguments: arguments,
-                                                 cancellation: cancellation,
-                                                 onOutput: { reporter.consume($0) })
+            let summary = try readable.bridge.extract(
+                indices: indices,
+                destination: destination,
+                password: password,
+                overwrite: overwrite,
+                flatten: flattenPaths,
+                testOnly: false,
+                progress: readable.didUnwrap ? whole.slice(offset: 0.5, span: 0.5) : whole)
+            if summary.linksRefused > 0 {
+                Diagnostics.log("Skipped \(summary.linksRefused) link(s) pointing outside \(destination.path)")
+            }
         }
-
         if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
-        // 1 means "completed with warnings", which is not a failure for our purposes.
-        if result.exitCode != 0 && result.exitCode != 1 {
-            throw Self.classify(result: result, password: password)
-        }
         progress?(ArchiveProgress(fraction: 1, currentFile: nil))
-    }
-
-    /// Extracts a single entry into a scratch folder and returns the file's URL,
-    /// which is how the browser opens or previews one item.
-    public func extractSingle(archive: URL,
-                              entry: ArchiveEntry,
-                              to scratch: URL,
-                              password: String?,
-                              cancellation: CancellationToken? = nil) async throws -> URL {
-        try await extract(archive: archive,
-                          entries: [entry],
-                          to: scratch,
-                          password: password,
-                          overwrite: .overwrite,
-                          flattenPaths: false,
-                          cancellation: cancellation,
-                          progress: nil)
-        let produced = scratch.appendingPathComponent(entry.path)
-        if FileManager.default.fileExists(atPath: produced.path) { return produced }
-        // Some formats normalise separators; fall back to the leaf name.
-        let leaf = scratch.appendingPathComponent(entry.name)
-        if FileManager.default.fileExists(atPath: leaf.path) { return leaf }
-        throw ArchiveError.ioFailure(L("%@ was not found after extraction.", entry.name))
-    }
-
-    private func isNestedTarArchive(_ archive: URL) async throws -> Bool {
-        let key = FormatRegistry.format(for: archive)?.key ?? ""
-        if Self.alwaysNestedTar.contains(key) { return true }
-        guard Self.singleStreamCompressors.contains(key) else { return false }
-        let tool = try EngineLocator.requireSevenZip()
-        let probe = try await ProcessRunner.run(
-            executable: tool,
-            arguments: ["l", "-slt", "-p", archive.path] + Self.commonFlags)
-        guard probe.exitCode == 0 else { return false }
-        let listing = SevenZipListParser.parse(probe.standardOutput)
-        return listing.entries.count == 1 && (listing.entries.first?.path.lowercased().hasSuffix(".tar") ?? false)
     }
 
     // MARK: - Testing
@@ -159,25 +69,25 @@ public struct SevenZipEngine: ArchiveEngine {
                      password: String?,
                      cancellation: CancellationToken? = nil,
                      progress: ProgressHandler? = nil) async throws -> String {
-        let tool = try EngineLocator.requireSevenZip()
-        let reporter = ProgressReporter(handler: progress)
-        var arguments = ["t", archive.path, "-bsp1"] + Self.commonFlags
-        arguments.append(passwordFlag(password))
-        let result = try await ProcessRunner.run(executable: tool,
-                                                 arguments: arguments,
-                                                 cancellation: cancellation,
-                                                 onOutput: { reporter.consume($0) })
-        if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
-        if result.exitCode != 0 && result.exitCode != 1 {
-            throw Self.classify(result: result, password: password)
+        let summary = try await Self.blocking {
+            let whole = BridgeProgress(handler: progress, cancellation: cancellation)
+            let readable = try Readable.open(archive, password: password, codePage: nil,
+                                             unwrapProgress: whole.slice(offset: 0, span: 0.5))
+            let result = try readable.bridge.extract(
+                indices: nil, destination: nil, password: password, overwrite: .overwrite,
+                flatten: false, testOnly: true,
+                progress: readable.didUnwrap ? whole.slice(offset: 0.5, span: 0.5) : whole)
+            return (files: Int(result.filesProcessed), bytes: result.bytesProcessed)
         }
-        return Self.summaryTail(of: result.standardOutput)
+        if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
+        progress?(ArchiveProgress(fraction: 1, currentFile: nil))
+        let size = ByteCountFormatter.string(fromByteCount: Int64(clamping: summary.bytes), countStyle: .file)
+        return [L("Everything is Ok"), L("Files: %d", summary.files), L("Size: %@", size)]
+            .joined(separator: "\n")
     }
 
-    // MARK: - Writing
+    // MARK: - Creating
 
-    /// Creates a new archive from files on disk. Items are grouped by parent folder so
-    /// each 7zz run can store plain relative names, which keeps the archive root clean.
     public func create(archive: URL,
                        items: [URL],
                        options: CompressionOptions,
@@ -186,231 +96,531 @@ public struct SevenZipEngine: ArchiveEngine {
         guard let format = options.format, format.canWrite else {
             throw ArchiveError.notWritable(options.formatKey)
         }
-        if FileManager.default.fileExists(atPath: archive.path) {
-            try FileManager.default.removeItem(at: archive)
+        let recipe = try WriteRecipe(formatKey: format.key, displayName: format.displayName)
+        let volumeBytes = try options.volumeSize.flatMap(Self.volumeBytes)
+
+        try await Self.blocking {
+            let whole = BridgeProgress(handler: progress, cancellation: cancellation)
+            let added = try Self.collect(items, excludeMacMetadata: options.excludeMacMetadata)
+            let scratch = try Scratch(beside: archive)
+            defer { scratch.remove() }
+
+            let output = scratch.file("output")
+            if let compressor = recipe.compressor {
+                if recipe.container == nil {
+                    // A bare compressor holds exactly one file.
+                    guard added.count == 1, let only = added.first,
+                          !only.diskURL.hasDirectoryPath, !Self.isDirectory(only.diskURL) else {
+                        throw ArchiveError.ioFailure(
+                            L("%@ holds a single file. Choose one file, or save as TAR + %@ instead.",
+                              format.displayName, format.displayName))
+                    }
+                    try BridgeArchive.create(added: added, to: output,
+                                             settings: recipe.settings(options, formatName: compressor),
+                                             progress: whole)
+                } else {
+                    // tar first, then compress the tar.
+                    let tar = scratch.file(Self.innerTarName(for: archive))
+                    try BridgeArchive.create(added: added, to: tar,
+                                             settings: recipe.settings(options, formatName: "tar"),
+                                             progress: whole.slice(offset: 0, span: 0.5))
+                    try BridgeArchive.create(added: [.init(archivePath: tar.lastPathComponent, diskURL: tar)],
+                                             to: output,
+                                             settings: recipe.settings(options, formatName: compressor),
+                                             progress: whole.slice(offset: 0.5, span: 0.5))
+                }
+            } else {
+                try BridgeArchive.create(added: added, to: output,
+                                         settings: recipe.settings(options, formatName: recipe.container!),
+                                         progress: whole)
+            }
+
+            if let volumeBytes {
+                try Self.split(output, into: archive, volumeBytes: volumeBytes)
+            } else {
+                try Self.place(output, at: archive)
+            }
         }
-        try await add(items: items, to: archive, options: options,
-                      cancellation: cancellation, progress: progress)
+        NestedTarCache.shared.forget(archive)
+        progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
 
-    /// Adds files to a new or existing archive.
+    // MARK: - Editing
+
+    /// Adds files to an archive, replacing items with the same paths. Creates the
+    /// archive when it does not exist yet.
     public func add(items: [URL],
                     to archive: URL,
                     options: CompressionOptions,
                     cancellation: CancellationToken? = nil,
                     progress: ProgressHandler? = nil) async throws {
         guard !items.isEmpty else { return }
-        let tool = try EngineLocator.requireSevenZip()
-        let reporter = ProgressReporter(handler: progress)
-
-        var groups: [URL: [String]] = [:]
-        for item in items {
-            groups[item.deletingLastPathComponent().standardizedFileURL, default: []]
-                .append(item.lastPathComponent)
+        guard PathSafety.itemExists(at: archive) else {
+            try await create(archive: archive, items: items, options: options,
+                             cancellation: cancellation, progress: progress)
+            return
         }
-
-        for (parent, names) in groups {
-            let listFile = try writeListFile(names: names)
-            defer { try? FileManager.default.removeItem(at: listFile) }
-
-            var arguments = ["a", archive.path, "-bsp1", "-bb1"] + Self.commonFlags
-            arguments.append("-t\(sevenZipType(for: options.formatKey))")
-            if let format = options.format, format.supportsCompressionLevel {
-                arguments.append("-mx=\(options.level)")
-            }
-            if options.formatKey == "7z" {
-                arguments.append(options.solid ? "-ms=on" : "-ms=off")
-            }
-            if let password = options.password, !password.isEmpty {
-                arguments.append(contentsOf: writePasswordFlags(password))
-                if options.formatKey == "zip" { arguments.append("-mem=AES256") }
-                if options.encryptFileNames, options.format?.supportsEncryptedHeaders == true {
-                    arguments.append("-mhe=on")
-                }
-            }
-            if let volumeSize = options.volumeSize, !volumeSize.isEmpty {
-                arguments.append("-v\(volumeSize)")
-            }
-            if options.excludeMacMetadata {
-                arguments.append(contentsOf: ["-xr!.DS_Store", "-xr!__MACOSX", "-xr!._*"])
-            }
-            arguments.append("@\(listFile.path)")
-
-            let result = try await ProcessRunner.run(executable: tool,
-                                                     arguments: arguments,
-                                                     currentDirectory: parent,
-                                                     cancellation: cancellation,
-                                                     onOutput: { reporter.consume($0) })
-            if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
-            if result.exitCode != 0 && result.exitCode != 1 {
-                throw Self.classify(result: result, password: options.password)
-            }
+        try await rewrite(archive, password: options.password, options: options,
+                          cancellation: cancellation, progress: progress) { bridge in
+            let added = try Self.collect(items, excludeMacMetadata: options.excludeMacMetadata)
+            let replaced = Set(added.map(\.archivePath))
+            let removed = bridge.indices().filter { replaced.contains($0.path) }.map(\.index)
+            return Edit(removed: removed, renames: [], added: added)
         }
-        progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
 
     public func delete(entries: [ArchiveEntry], from archive: URL, password: String?) async throws {
         guard !entries.isEmpty else { return }
-        let tool = try EngineLocator.requireSevenZip()
-        let listFile = try writeListFile(for: entries)
-        defer { try? FileManager.default.removeItem(at: listFile) }
-
-        var arguments = ["d", archive.path, "-spd", "@\(listFile.path)"] + Self.commonFlags
-        arguments.append(contentsOf: writePasswordFlags(password))
-        let result = try await ProcessRunner.run(executable: tool, arguments: arguments)
-        if result.exitCode != 0 && result.exitCode != 1 {
-            throw Self.classify(result: result, password: password)
+        try await rewrite(archive, password: password, options: nil) { bridge in
+            Edit(removed: Self.indices(of: entries, in: bridge), renames: [], added: [])
         }
     }
 
-    /// Writes an edited copy of one entry back, preserving its path inside the archive.
+    /// Renames an item. A folder takes everything inside it along.
+    public func rename(entry: ArchiveEntry, to newPath: String, in archive: URL, password: String?) async throws {
+        guard PathSafety.isSafe(entryPath: newPath) else { throw ArchiveError.unsafeEntry(newPath) }
+        let from = entry.path
+        let to = ArchivePath.normalize(newPath)
+        guard from != to else { return }
+
+        try await rewrite(archive, password: password, options: nil) { bridge in
+            let renames = bridge.indices().compactMap { item -> (index: UInt32, path: String)? in
+                if item.path == from { return (item.index, to) }
+                if item.path.hasPrefix(from + "/") {
+                    return (item.index, to + item.path.dropFirst(from.count))
+                }
+                return nil
+            }
+            return Edit(removed: [], renames: renames, added: [])
+        }
+    }
+
+    /// Writes an edited copy of one entry back, keeping its path inside the archive.
     public func update(fileAt localURL: URL,
                        entryPath: String,
                        in archive: URL,
                        options: CompressionOptions,
                        cancellation: CancellationToken? = nil,
                        progress: ProgressHandler? = nil) async throws {
-        let tool = try EngineLocator.requireSevenZip()
-        let staging = try EntryStaging(localURL: localURL, entryPath: entryPath)
-        defer { staging.cleanup() }
-
-        var arguments = ["a", archive.path, "-bsp1"] + Self.commonFlags
-        arguments.append("-t\(sevenZipType(for: options.formatKey))")
-        arguments.append(contentsOf: writePasswordFlags(options.password))
-        arguments.append(staging.relativePath)
-
-        let result = try await ProcessRunner.run(executable: tool,
-                                                 arguments: arguments,
-                                                 currentDirectory: staging.root,
-                                                 cancellation: cancellation)
-        if result.exitCode != 0 && result.exitCode != 1 {
-            throw Self.classify(result: result, password: options.password)
+        let path = ArchivePath.normalize(entryPath)
+        guard PathSafety.isSafe(entryPath: path) else { throw ArchiveError.unsafeEntry(entryPath) }
+        try await rewrite(archive, password: options.password, options: options,
+                          cancellation: cancellation, progress: progress) { bridge in
+            let removed = bridge.indices().filter { $0.path == path }.map(\.index)
+            return Edit(removed: removed, renames: [],
+                        added: [.init(archivePath: path, diskURL: localURL)])
         }
     }
 
-    public func rename(entry: ArchiveEntry, to newPath: String, in archive: URL, password: String?) async throws {
-        guard PathSafety.isSafe(entryPath: newPath) else { throw ArchiveError.unsafeEntry(newPath) }
-        let tool = try EngineLocator.requireSevenZip()
-        var arguments = ["rn", archive.path, entry.path, ArchivePath.normalize(newPath)] + Self.commonFlags
-        arguments.append(contentsOf: writePasswordFlags(password))
-        let result = try await ProcessRunner.run(executable: tool, arguments: arguments)
-        if result.exitCode != 0 && result.exitCode != 1 {
-            throw Self.classify(result: result, password: password)
+    public func release(archive: URL) {
+        NestedTarCache.shared.forget(archive)
+    }
+
+    // MARK: - Rewriting
+
+    struct Edit {
+        var removed: [UInt32]
+        var renames: [(index: UInt32, path: String)]
+        var added: [BridgeArchive.NewItem]
+    }
+
+    /// Every edit is a rewrite: 7-Zip copies the untouched items across without
+    /// recompressing them, applies the edit, and the result replaces the original.
+    private func rewrite(_ archive: URL,
+                         password: String?,
+                         options: CompressionOptions?,
+                         cancellation: CancellationToken? = nil,
+                         progress: ProgressHandler? = nil,
+                         edit: @escaping @Sendable (BridgeArchive) throws -> Edit) async throws {
+        let codePage = CodePageMemory.codePage(for: archive)
+        try await Self.blocking {
+            let whole = BridgeProgress(handler: progress, cancellation: cancellation)
+            let readable = try Readable.open(archive, password: password, codePage: codePage,
+                                             unwrapProgress: whole.slice(offset: 0, span: 0.3))
+            let changes = try edit(readable.bridge)
+            if changes.removed.isEmpty, changes.renames.isEmpty, changes.added.isEmpty { return }
+
+            let info = readable.bridge.info
+            let formatName = info.formatName.lowercased()
+            guard SevenZipLibrary.writableFormatNames.contains(where: { $0.lowercased() == formatName }) else {
+                throw ArchiveError.notWritable(FormatRegistry.format(for: archive)?.displayName ?? info.formatName)
+            }
+
+            // Keep the archive as protected as it was: a header-encrypted 7z stays so.
+            let settings = BridgeArchive.WriteSettings(
+                formatName: formatName,
+                level: options?.level ?? 5,
+                password: options?.password ?? password,
+                zipEncryption: options?.zipEncryption ?? .aes256,
+                encryptHeaders: info.hasEncryptedHeader || (options?.encryptFileNames ?? false),
+                solid: formatName == "7z" ? (options?.solid ?? info.isSolid) : nil)
+
+            let scratch = try Scratch(beside: archive)
+            defer { scratch.remove() }
+            let output = scratch.file("output")
+
+            if let outer = readable.outer {
+                // Rewrite the tar, then compress it again the way it was compressed.
+                let tar = scratch.file(outer.innerName)
+                try readable.bridge.write(removed: changes.removed, renames: changes.renames,
+                                          added: changes.added, to: tar, settings: settings,
+                                          progress: whole.slice(offset: 0.3, span: 0.4))
+                var outerSettings = settings
+                outerSettings.formatName = outer.info.formatName.lowercased()
+                outerSettings.password = nil
+                try BridgeArchive.create(added: [.init(archivePath: outer.innerName, diskURL: tar)],
+                                         to: output, settings: outerSettings,
+                                         progress: whole.slice(offset: 0.7, span: 0.3))
+            } else {
+                try readable.bridge.write(removed: changes.removed, renames: changes.renames,
+                                          added: changes.added, to: output, settings: settings,
+                                          progress: readable.didUnwrap ? whole.slice(offset: 0.3, span: 0.7) : whole)
+            }
+            try Self.place(output, at: archive)
         }
+        NestedTarCache.shared.forget(archive)
+        if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
+        progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
 
     // MARK: - Helpers
 
-    /// Read commands always get -p so 7zz fails fast instead of prompting on a terminal
-    /// we do not have.
-    private func passwordFlag(_ password: String?) -> String {
-        "-p" + (password ?? "")
-    }
-
-    /// Write commands must omit -p entirely when there is no password: a bare -p means
-    /// "ask me for a password to encrypt with", which blocks on stdin forever.
-    private func writePasswordFlags(_ password: String?) -> [String] {
-        guard let password, !password.isEmpty else { return [] }
-        return ["-p" + password]
-    }
-
-    private func sevenZipType(for key: String) -> String {
-        switch key {
-        case "tgz", "tbz2", "txz", "tzst": return "tar"
-        default: return key
+    /// Runs bridge work on a plain dispatch thread; it blocks for as long as the
+    /// archive takes, which would starve Swift's cooperative pool.
+    static func blocking<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result { try body() })
+            }
         }
     }
 
-    private func writeListFile(for entries: [ArchiveEntry]) throws -> URL {
-        try writeListFile(names: entries.map(\.path))
+    /// The indices behind `entries`, with everything inside the folders among them.
+    /// Folders the browser shows but the archive never stored are covered too.
+    static func indices(of entries: [ArchiveEntry], in bridge: BridgeArchive) -> [UInt32] {
+        let wanted = Set(entries.map(\.path))
+        return bridge.indices().filter { item in
+            if wanted.contains(item.path) { return true }
+            var parent = Substring(item.path)
+            while let slash = parent.lastIndex(of: "/") {
+                parent = parent[..<slash]
+                if wanted.contains(String(parent)) { return true }
+            }
+            return false
+        }.map(\.index)
     }
 
-    private func writeListFile(names: [String]) throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("justarc-\(UUID().uuidString).lst")
-        let text = names.joined(separator: "\n") + "\n"
-        try Data(text.utf8).write(to: url, options: .atomic)
-        return url
-    }
+    /// Everything to store for `items`, folders expanded, each under its own name at
+    /// the archive root. Symbolic links are stored as links, never followed.
+    static func collect(_ items: [URL], excludeMacMetadata: Bool) throws -> [BridgeArchive.NewItem] {
+        var result: [BridgeArchive.NewItem] = []
+        for item in items {
+            let name = item.lastPathComponent
+            if excludeMacMetadata && isMacMetadata(name) { continue }
+            guard PathSafety.itemExists(at: item) else {
+                throw ArchiveError.ioFailure(L("%@ was not found.", item.path))
+            }
+            result.append(.init(archivePath: name, diskURL: item))
+            guard isDirectory(item), !isSymbolicLink(item) else { continue }
 
-    static func classify(result: ProcessResult, password: String?) -> ArchiveError {
-        let text = result.combined
-        let lowered = text.lowercased()
-        if lowered.contains("wrong password")
-            || lowered.contains("cannot open encrypted archive")
-            || lowered.contains("can not open encrypted archive") {
-            return (password?.isEmpty ?? true) ? .passwordRequired : .wrongPassword
+            guard let enumerator = FileManager.default.enumerator(atPath: item.path) else { continue }
+            while let relative = enumerator.nextObject() as? String {
+                let leaf = (relative as NSString).lastPathComponent
+                if excludeMacMetadata && isMacMetadata(leaf) {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                result.append(.init(archivePath: name + "/" + relative,
+                                    diskURL: item.appendingPathComponent(relative)))
+            }
         }
-        if lowered.contains("data error") && (password?.isEmpty == false) {
-            // 7-Zip reports a data error rather than a password error for some zip variants.
-            return .wrongPassword
-        }
-        return .engineFailed(code: result.exitCode, message: Self.firstErrorLine(in: text))
+        return result
     }
 
-    private static func firstErrorLine(in text: String) -> String {
-        let lines = text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        if let errorLine = lines.first(where: { $0.hasPrefix("ERROR") }) {
-            return errorLine.replacingOccurrences(of: "ERROR: ", with: "")
-        }
-        return lines.suffix(3).joined(separator: " ")
+    private static func isMacMetadata(_ name: String) -> Bool {
+        name == ".DS_Store" || name == "__MACOSX" || name.hasPrefix("._")
     }
 
-    private static func summaryTail(of text: String) -> String {
-        let lines = text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        return lines.suffix(6).joined(separator: "\n")
+    static func isDirectory(_ url: URL) -> Bool {
+        var directory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory) && directory.boolValue
+    }
+
+    private static func isSymbolicLink(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
+    }
+
+    /// "photos.tar.gz" → "photos.tar", "photos.tgz" → "photos.tar".
+    static func innerTarName(for archive: URL) -> String {
+        var base = archive.deletingPathExtension().lastPathComponent
+        if !base.lowercased().hasSuffix(".tar") { base += ".tar" }
+        return base
+    }
+
+    /// Moves a finished archive over the destination in one step.
+    static func place(_ output: URL, at archive: URL) throws {
+        let fileManager = FileManager.default
+        if PathSafety.itemExists(at: archive) {
+            _ = try fileManager.replaceItemAt(archive, withItemAt: output)
+        } else {
+            try fileManager.moveItem(at: output, to: archive)
+        }
+    }
+
+    /// Cuts a finished archive into `name.001`, `name.002`, …, which is how 7-Zip
+    /// writes volumes and what it reads back.
+    static func split(_ output: URL, into archive: URL, volumeBytes: UInt64) throws {
+        let input = try FileHandle(forReadingFrom: output)
+        defer { try? input.close() }
+
+        var part = 1
+        let chunk = 4 * 1024 * 1024
+        while true {
+            var written: UInt64 = 0
+            let volume = URL(fileURLWithPath: archive.path + String(format: ".%03d", part))
+            var handle: FileHandle?
+            while written < volumeBytes {
+                let wanted = Int(min(UInt64(chunk), volumeBytes - written))
+                guard let data = try input.read(upToCount: wanted), !data.isEmpty else { break }
+                if handle == nil {
+                    if PathSafety.itemExists(at: volume) { try FileManager.default.removeItem(at: volume) }
+                    FileManager.default.createFile(atPath: volume.path, contents: nil)
+                    handle = try FileHandle(forWritingTo: volume)
+                }
+                try handle?.write(contentsOf: data)
+                written += UInt64(data.count)
+            }
+            try handle?.close()
+            guard handle != nil, written == volumeBytes else { break }
+            part += 1
+        }
+    }
+
+    /// "100m" → 104857600. 7-Zip's units are powers of 1024.
+    static func volumeBytes(_ spec: String) throws -> UInt64? {
+        let text = spec.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !text.isEmpty else { return nil }
+        let multipliers: [Character: UInt64] = ["b": 1, "k": 1 << 10, "m": 1 << 20, "g": 1 << 30]
+        var digits = text
+        var multiplier: UInt64 = 1
+        if let last = text.last, let value = multipliers[last] {
+            multiplier = value
+            digits.removeLast()
+        }
+        guard let count = UInt64(digits), count > 0 else {
+            throw ArchiveError.ioFailure(L("%@ is not a volume size.", spec))
+        }
+        return count * multiplier
     }
 }
 
-/// Turns the `-bsp1 -bb1` output stream into percentage and current-file updates.
-final class ProgressReporter: @unchecked Sendable {
-    private let handler: ProgressHandler?
-    private let lock = NSLock()
-    private var lastFraction: Double = -1
-    private var lastFile: String?
+// MARK: - Opening for reading
 
-    init(handler: ProgressHandler?) {
-        self.handler = handler
+/// An archive opened for reading, with a compressed tar already unwrapped.
+private struct Readable {
+    let bridge: BridgeArchive
+    /// The compressed stream around the tar, when there is one.
+    let outer: NestedTarCache.Outer?
+    /// True when this call did the unwrapping, rather than finding it cached.
+    let didUnwrap: Bool
+
+    static func open(_ archive: URL, password: String?, codePage: Int?,
+                     unwrapProgress: BridgeProgress) throws -> Readable {
+        if let cached = NestedTarCache.shared.lookup(archive) {
+            let tar = try BridgeArchive.open(cached.tar, password: nil, codePage: codePage)
+            return Readable(bridge: tar, outer: cached.outer, didUnwrap: false)
+        }
+
+        let bridge = try BridgeArchive.open(archive, password: password, codePage: codePage)
+        guard NestedTarCache.mayHoldTar(bridge, archive: archive) else {
+            return Readable(bridge: bridge, outer: nil, didUnwrap: false)
+        }
+        guard let unwrapped = try NestedTarCache.shared.unwrap(bridge, archive: archive,
+                                                               codePage: codePage,
+                                                               progress: unwrapProgress) else {
+            return Readable(bridge: bridge, outer: nil, didUnwrap: false)
+        }
+        return Readable(bridge: unwrapped.tar, outer: unwrapped.outer, didUnwrap: true)
+    }
+}
+
+/// Holds the unwrapped tar inside each `.tar.gz` and friends that has been opened,
+/// so browsing, previewing and extracting do not decompress the whole stream again
+/// every time. An entry is dropped when its archive changes on disk or is released.
+final class NestedTarCache: @unchecked Sendable {
+    static let shared = NestedTarCache()
+
+    struct Outer {
+        let info: ArchiveInfo
+        /// The tar's name inside the compressed stream.
+        let innerName: String
     }
 
-    func consume(_ chunk: String) {
-        guard let handler else { return }
-        // 7-Zip rewrites the progress line with carriage returns and backspaces.
-        let pieces = chunk
-            .replacingOccurrences(of: "\u{8}", with: "")
-            .components(separatedBy: CharacterSet(charactersIn: "\r\n"))
-
-        for piece in pieces {
-            let line = piece.trimmingCharacters(in: .whitespaces)
-            guard !line.isEmpty else { continue }
-
-            var fraction: Double?
-            if let percentRange = line.range(of: #"^\s*(\d{1,3})%"#, options: .regularExpression) {
-                let digits = line[percentRange].filter(\.isNumber)
-                if let value = Double(digits) { fraction = min(max(value / 100, 0), 1) }
-            }
-
-            var file: String?
-            if let dashRange = line.range(of: " - ") {
-                file = String(line[dashRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-            } else if line.hasPrefix("- ") {
-                file = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-            }
-
-            lock.lock()
-            if let fraction { lastFraction = fraction }
-            if let file, !file.isEmpty { lastFile = file }
-            let reportFraction = lastFraction < 0 ? nil : lastFraction
-            let reportFile = lastFile
-            lock.unlock()
-
-            if fraction != nil || file != nil {
-                handler(ArchiveProgress(fraction: reportFraction, currentFile: reportFile))
-            }
+    private struct Stamp: Equatable {
+        let size: UInt64
+        let modified: Date
+        init?(_ url: URL) {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let size = attributes[.size] as? UInt64,
+                  let modified = attributes[.modificationDate] as? Date else { return nil }
+            self.size = size
+            self.modified = modified
         }
+    }
+
+    private struct Entry {
+        let stamp: Stamp
+        let folder: URL
+        let tar: URL
+        let outer: Outer
+    }
+
+    private let lock = NSLock()
+    private var entries: [String: Entry] = [:]
+    private let root = FileManager.default.temporaryDirectory.appendingPathComponent("JustArc-Unwrapped")
+
+    /// Single-stream formats that are usually a tar in disguise.
+    private static let streamFormats: Set<String> = ["gzip", "bzip2", "xz", "zstd", "z", "lzma", "lz4", "lzip"]
+    private static let alwaysTarKeys: Set<String> = ["tgz", "tbz2", "txz", "tzst", "taz"]
+
+    static func mayHoldTar(_ bridge: BridgeArchive, archive: URL) -> Bool {
+        guard streamFormats.contains(bridge.formatName.lowercased()), bridge.itemCount == 1 else { return false }
+        if alwaysTarKeys.contains(FormatRegistry.format(for: archive)?.key ?? "") { return true }
+        return bridge.item(0)?.path.lowercased().hasSuffix(".tar") == true
+    }
+
+    func lookup(_ archive: URL) -> (tar: URL, outer: Outer)? {
+        let key = archive.standardizedFileURL.path
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = entries[key] else { return nil }
+        guard Stamp(archive) == entry.stamp, FileManager.default.fileExists(atPath: entry.tar.path) else {
+            try? FileManager.default.removeItem(at: entry.folder)
+            entries[key] = nil
+            return nil
+        }
+        return (entry.tar, entry.outer)
+    }
+
+    /// Decompresses the stream into a temporary tar and opens it. Returns nil when
+    /// the payload turns out not to be a tar after all.
+    func unwrap(_ outer: BridgeArchive, archive: URL, codePage: Int?,
+                progress: BridgeProgress) throws -> (tar: BridgeArchive, outer: Outer)? {
+        guard let stamp = Stamp(archive) else { return nil }
+        let folder = root.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        do {
+            try outer.extract(indices: [0], destination: folder, password: nil, overwrite: .overwrite,
+                              flatten: true, testOnly: false, progress: progress)
+            guard let produced = try FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: nil).first else {
+                throw ArchiveError.ioFailure(L("%@ was not found after extraction.", archive.lastPathComponent))
+            }
+            guard let tar = try? BridgeArchive.open(produced, password: nil, codePage: codePage),
+                  tar.formatName.lowercased() == "tar" else {
+                try? FileManager.default.removeItem(at: folder)
+                return nil
+            }
+
+            let info = Outer(info: outer.info, innerName: produced.lastPathComponent)
+            let key = archive.standardizedFileURL.path
+            lock.lock()
+            if let old = entries[key] { try? FileManager.default.removeItem(at: old.folder) }
+            entries[key] = Entry(stamp: stamp, folder: folder, tar: produced, outer: info)
+            lock.unlock()
+            return (tar, info)
+        } catch {
+            try? FileManager.default.removeItem(at: folder)
+            throw error
+        }
+    }
+
+    func forget(_ archive: URL) {
+        let key = archive.standardizedFileURL.path
+        lock.lock()
+        let entry = entries.removeValue(forKey: key)
+        lock.unlock()
+        if let entry { try? FileManager.default.removeItem(at: entry.folder) }
+    }
+
+    func forgetAll() {
+        lock.lock()
+        entries.removeAll()
+        lock.unlock()
+        try? FileManager.default.removeItem(at: root)
+    }
+}
+
+// MARK: - Writing recipes
+
+/// How a format key turns into 7-Zip handlers: a container, a compressor, or a tar
+/// that is then compressed.
+private struct WriteRecipe {
+    let container: String?
+    let compressor: String?
+
+    init(formatKey: String, displayName: String) throws {
+        switch formatKey {
+        case "zip", "7z", "tar": (container, compressor) = (formatKey, nil)
+        case "gzip", "bzip2", "xz", "zstd": (container, compressor) = (nil, formatKey)
+        case "tgz": (container, compressor) = ("tar", "gzip")
+        case "tbz2": (container, compressor) = ("tar", "bzip2")
+        case "txz": (container, compressor) = ("tar", "xz")
+        case "tzst": (container, compressor) = ("tar", "zstd")
+        default: throw ArchiveError.notWritable(displayName)
+        }
+        let writable = Set(SevenZipLibrary.writableFormatNames.map { $0.lowercased() })
+        for name in [container, compressor].compactMap({ $0 }) where !writable.contains(name) {
+            throw ArchiveError.notWritable(displayName)
+        }
+    }
+
+    func settings(_ options: CompressionOptions, formatName: String) -> BridgeArchive.WriteSettings {
+        BridgeArchive.WriteSettings(formatName: formatName,
+                                    level: options.level,
+                                    password: options.password,
+                                    zipEncryption: options.zipEncryption,
+                                    encryptHeaders: options.encryptFileNames,
+                                    solid: formatName == "7z" ? options.solid : nil)
+    }
+}
+
+/// A private folder beside the archive for work in progress, so the finished file
+/// moves into place on the same volume in one step.
+private struct Scratch {
+    let folder: URL
+
+    init(beside archive: URL) throws {
+        let parent = archive.deletingLastPathComponent()
+        folder = parent.appendingPathComponent(".justarc-\(UUID().uuidString)")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        } catch {
+            throw ArchiveError.ioFailure(L("JustArc cannot write to %@.", parent.path))
+        }
+    }
+
+    func file(_ name: String) -> URL { folder.appendingPathComponent(name) }
+
+    func remove() { try? FileManager.default.removeItem(at: folder) }
+}
+
+/// The text encoding last chosen for an archive's names, so extracting and editing
+/// read the names the same way the listing did.
+enum CodePageMemory {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var pages: [String: Int] = [:]
+
+    static func remember(_ codePage: Int?, for archive: URL) {
+        lock.lock()
+        pages[archive.standardizedFileURL.path] = codePage
+        lock.unlock()
+    }
+
+    static func codePage(for archive: URL) -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        return pages[archive.standardizedFileURL.path]
     }
 }

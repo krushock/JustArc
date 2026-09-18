@@ -58,7 +58,7 @@ if [ -d "$SPARKLE_FW" ]; then
   codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$SPARKLE_FW"
 fi
 
-codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APP/Contents/Helpers/7zz"
+codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APP/Contents/Frameworks/7z.so"
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} \
   --entitlements "$ROOT/Sources/JustArc/Resources/JustArc.entitlements" \
   "$APP"

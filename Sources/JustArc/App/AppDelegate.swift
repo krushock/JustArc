@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard EngineLocator.sevenZip != nil else {
+        guard SevenZipLibrary.isAvailable else {
             presentMissingEngineAndQuit()
             return
         }
@@ -116,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = L("JustArc is missing its archive engine.")
-        alert.informativeText = L("The bundled 7-Zip helper could not be found in Contents/Helpers. Reinstall JustArc, or set JUSTARC_7ZZ to a 7zz binary when running from a build folder.")
+        alert.informativeText = L("The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder.")
         alert.runModal()
         NSApp.terminate(nil)
     }
@@ -227,21 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 }
 
 enum SevenZipVersion {
-    /// Filled in lazily the first time the About box is shown.
-    static let short: String = {
-        guard let tool = EngineLocator.sevenZip else { return "(not found)" }
-        let process = Process()
-        process.executableURL = tool
-        process.arguments = ["i"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        guard (try? process.run()) != nil else { return "" }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self)
-        guard let line = text.components(separatedBy: .newlines).first(where: { $0.contains("7-Zip") }),
-              let range = line.range(of: #"\d+\.\d+"#, options: .regularExpression) else { return "" }
-        return String(line[range])
-    }()
+    static var short: String {
+        SevenZipLibrary.isAvailable ? SevenZipLibrary.version : "(not found)"
+    }
 }

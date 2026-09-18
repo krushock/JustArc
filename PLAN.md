@@ -39,13 +39,13 @@ Two modes, chosen at launch:
 
 | Format | Read | Write | Password read | Password write | Engine |
 |---|---|---|---|---|---|
-| zip (zip64, jar/ipa/apk/epub) | ✓ | ✓ (Deflate/Store, levels) | ZipCrypto + AES | ZipCrypto + AES-256 | 7zz |
-| 7z | ✓ | ✓ (LZMA2, solid, levels) | AES-256 (+ encrypted headers) | AES-256 (+ encrypted headers) | 7zz |
-| rar / rar5 (incl. multi-volume) | ✓ | only if user-installed `rar` binary present | ✓ | ✓ via `rar` | 7zz (read), rar CLI (write) |
-| tar, tar.gz/tgz, tar.bz2, tar.xz, tar.zst, tar.lz4 | ✓ | ✓ | n/a | n/a | 7zz (bsdtar fallback for xattrs) |
-| gz, bz2, xz, zst, lz4 (single file) | ✓ | ✓ | n/a | n/a | 7zz |
+| zip (zip64, jar/ipa/apk/epub) | ✓ | ✓ (Deflate/Store, levels) | ZipCrypto + AES | ZipCrypto + AES-256 | 7z.so |
+| 7z | ✓ | ✓ (LZMA2, solid, levels) | AES-256 (+ encrypted headers) | AES-256 (+ encrypted headers) | 7z.so |
+| rar / rar5 (incl. multi-volume) | ✓ | only if user-installed `rar` binary present | ✓ | ✓ via `rar` | 7z.so (read), rar CLI (write) |
+| tar, tar.gz/tgz, tar.bz2, tar.xz, tar.zst, tar.lz4 | ✓ | ✓ (not zst/lz4) | n/a | n/a | 7z.so |
+| gz, bz2, xz, zst, lz4 (single file) | ✓ | ✓ (not zst/lz4) | n/a | n/a | 7z.so |
 | dmg (UDIF: UDZO/ULFO/UDBZ/UDRW, HFS+/APFS) | ✓ | ✓ | AES-128/256 | AES-128/256 | hdiutil (mount-based) |
-| iso, cab, xar/pkg, cpio, ar/deb, rpm, wim, lzh, arj, z | ✓ | iso/xar/cpio via 7zz | – | – | 7zz |
+| iso, cab, xar/pkg, cpio, ar/deb, rpm, wim, lzh, arj, z | ✓ | – | – | – | 7z.so |
 | sit/sitx, legacy Mac formats | phase 4 | – | – | – | XADMaster (The Unarchiver's framework) |
 
 RAR write cannot be bundled (RARLAB licence). Detect `rar` at `/usr/local/bin`, `/opt/homebrew/bin`, or a user-chosen path; show "Install RAR…" link otherwise. Same policy BetterZip uses.
@@ -59,7 +59,7 @@ JustArc.xcodeproj
 ├─ JustArcCore/            Swift package, no AppKit — fully unit-testable
 │  ├─ ArchiveEngine.swift  protocol: probe, list, extract(entries,to,password), create, add, delete, rename, test
 │  ├─ Engines/
-│  │   ├─ SevenZipEngine   wraps bundled `7zz` (Process + pipes, parses `l -slt`, progress from `-bsp1`)
+│  │   ├─ SevenZipEngine   7-Zip's format library in process, through the SevenZipBridge C API
 │  │   ├─ DMGEngine        hdiutil attach/detach/create; entries = mounted filesystem
 │  │   ├─ RarWriterEngine  external `rar` CLI if present
 │  │   └─ TarEngine        bsdtar for tar.* when xattr/resource-fork fidelity matters
@@ -75,15 +75,15 @@ JustArc.xcodeproj
 │  │                       Quick Look, drag & drop (in/out), toolbar
 │  ├─ Save/                SaveAs accessory (format, level, password, encrypt names, split volumes, exclude .DS_Store/._*)
 │  └─ Services/            Finder Services & Quick Actions: "Compress", "Extract Here", "Extract To…"
-├─ Helpers/                7zz (universal, LGPL), signed with app's team ID → Contents/Helpers
+├─ Frameworks/             7z.so (universal, LGPL, built from vendored source), signed with the app
 └─ JustArcTests/           fixture archives generated at test time (7zz, zip, hdiutil)
 ```
 
 Key mechanics
 - **Launch-mode decision**: `applicationWillFinishLaunching` sets a flag; if `application(_:open:)` arrives before any window is shown and ⌥ is not held and the format is in the "extract on open" set → Quick Extract; else open documents. `applicationShouldOpenUntitledFile` → true only when launched with no files.
-- **Editing model**: the browser never edits the archive live. It records pending ops on `ArchiveSession`. Save applies them: in place via `7zz a/d/rn` for zip/7z/tar when the format is unchanged, otherwise rebuild (extract to temp → apply ops → create new archive → atomic replace). Read-only formats (rar w/o `rar`, dmg, iso, cab) force Save As.
-- **Single-file open / Quick Look**: extract only the requested entry (`7zz e -i!path`) into the session temp dir; Quick Look points at that file. Track opened files with a dispatch source; if modified, offer "Update archive with edited file" (BetterZip parity, phase 3).
-- **Passwords**: 7zz reports `Encrypted = +` per entry; header-encrypted 7z/rar fail listing → prompt and retry. Password held in memory for the session; optional Keychain item keyed by archive path hash. Known limitation: 7zz and rar take `-p` on the command line (visible to same-user `ps` briefly); hdiutil uses `-stdinpass`. Mitigation later: in-process 7-Zip (`7z.so`-style dylib) behind the same `ArchiveEngine` protocol.
+- **Editing model**: the browser never edits the archive live. It records pending ops on `ArchiveSession`. Save applies them: in place for zip/7z/tar (and tar.gz/bz2/xz, by rewriting the tar and recompressing it) when the format is unchanged, otherwise rebuild (extract to temp → apply ops → create new archive → atomic replace). Read-only formats (rar w/o `rar`, dmg, iso, cab) force Save As.
+- **Single-file open / Quick Look**: extract only the requested entry into the session temp dir; Quick Look points at that file. Track opened files with a dispatch source; if modified, offer "Update archive with edited file" (BetterZip parity, phase 3).
+- **Passwords**: 7-Zip reports encryption per entry; header-encrypted 7z/rar fail listing → prompt and retry. Password held in memory for the session; optional Keychain item keyed by archive path hash. 7-Zip runs in process, so passwords stay in memory and are wiped when an archive closes; hdiutil uses `-stdinpass`. Only RARLAB's `rar` still takes `-p` on its command line, when writing RAR.
 - **DMG**: `hdiutil attach -nobrowse -readonly -noverify -noautoopen -mountpoint <tmp>` (pipe `Y` for SLA images, `-stdinpass` for encrypted). Browse = enumerate the mount; extract = copy; detach on close. Create: `hdiutil create -srcfolder -format UDZO|ULFO -encryption AES-256 -stdinpass`.
 - **macOS hygiene**: never add `.DS_Store`, `._*`, `__MACOSX` unless the user opts in; preserve executable bits and symlinks; filename encoding override (`-mcp=` for CP866/Shift-JIS zips).
 - **Safety**: reject entries resolving outside the destination, cap total expanded size / entry count with a warning, never follow symlinks out of the destination.
@@ -101,12 +101,13 @@ Declare `CFBundleDocumentTypes` (Viewer for read-only, Editor for writable) for:
 | M2 | Browser read-only | **done** | Window, folder tree, sortable list, path bar, filter, Quick Look, open single file, extract selected/all, drag-out, dmg via hdiutil |
 | M3 | Create & edit | **done** | Empty archive window, drag-in/add/delete/rename, Save and Save As with format, level, password, encrypted names and split volumes. RAR writing through RARLAB's tool, downloadable from Settings. Edited files are offered back to the archive |
 | M4 | Polish & ship | **done, except notarization** | Four Finder Services, filename encoding menu, Sparkle wired and embedded, hardened-runtime signing, installer disk image, English and Russian |
-| M5 | Later | not started | XADMaster for sit/legacy, in-process 7z engine (no CLI passwords), App Store variant, Shortcuts actions |
+| M5 | In-process 7-Zip | **done** | 7-Zip 25.01 built from source as `7z.so`, loaded through a C bridge: no subprocess, no passwords in argv, split volumes read back, zip encryption method selectable in the engine |
+| M6 | Later | not started | XADMaster for sit/legacy, App Store variant, Shortcuts actions |
 
 **What is not verified.** Notarization needs a Developer ID Application certificate, and
 this machine has only an Apple Development one. The release script runs end to end
 otherwise: hardened runtime, entitlements, and a deep signature over the app, the 7-Zip
-helper and the Sparkle framework, all confirmed with `codesign --verify --deep --strict`.
+library and the Sparkle framework, all confirmed with `codesign --verify --deep --strict`.
 Sparkle is embedded and starts, but no appcast is published, so there is nothing to find.
 Quick Actions proper would need an app extension target, which a hand-assembled bundle
 cannot produce; the Services menu covers the same ground.

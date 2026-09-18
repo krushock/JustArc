@@ -8,13 +8,16 @@
 "%@ expands to a very large amount of data." = "%@ expands to a very large amount of data.";
 "%@ file" = "%@ file";
 "%@ has no mountable file systems." = "%@ has no mountable file systems.";
+"%@ holds a single file. Choose one file, or save as TAR + %@ instead." = "%@ holds a single file. Choose one file, or save as TAR + %@ instead.";
 "%@ is empty." = "%@ is empty.";
+"%@ is not a volume size." = "%@ is not a volume size.";
 "%@ is not an executable." = "%@ is not an executable.";
 "%@ is not installed. %@" = "%@ is not installed. %@";
 "%@ is protected. Enter its password to continue." = "%@ is protected. Enter its password to continue.";
 "%@ is stored in %@ and has not been downloaded to this Mac. Open it in Finder to download it, and check that %@ is running." = "%@ is stored in %@ and has not been downloaded to this Mac. Open it in Finder to download it, and check that %@ is running.";
 "%@ was edited outside JustArc." = "%@ was edited outside JustArc.";
 "%@ was not found after extraction." = "%@ was not found after extraction.";
+"%@ was not found." = "%@ was not found.";
 "%d files opened from this archive were edited outside JustArc." = "%d files opened from this archive were edited outside JustArc.";
 "%d folders already exist in “%@”." = "%d folders already exist in “%@”.";
 "%d items already exist in “%@”." = "%d items already exist in “%@”.";
@@ -92,6 +95,7 @@
 "Encrypted: %@" = "Encrypted: %@";
 "Enter a new name for this item inside the archive." = "Enter a new name for this item inside the archive.";
 "Enter the archive password" = "Enter the archive password";
+"Everything is Ok" = "Everything is Ok";
 "Extract" = "Extract";
 "Extract All…" = "Extract All…";
 "Extract Selected…" = "Extract Selected…";
@@ -106,6 +110,7 @@
 "Filename Encoding" = "Filename Encoding";
 "Files" = "Files";
 "Files: %@" = "Files: %@";
+"Files: %d" = "Files: %d";
 "Filter" = "Filter";
 "Filter the list" = "Filter the list";
 "Find…" = "Find…";
@@ -131,6 +136,7 @@
 "JustArc Settings" = "JustArc Settings";
 "JustArc cannot read %@ archives." = "JustArc cannot read %@ archives.";
 "JustArc cannot write %@ archives. Save a copy in another format." = "JustArc cannot write %@ archives. Save a copy in another format.";
+"JustArc cannot write to %@." = "JustArc cannot write to %@.";
 "JustArc could not complete that command." = "JustArc could not complete that command.";
 "JustArc could not create %@." = "JustArc could not create %@.";
 "JustArc could not extract %@." = "JustArc could not extract %@.";
@@ -214,6 +220,7 @@
 "Show password" = "Show password";
 "Simplified Chinese (GBK)" = "Simplified Chinese (GBK)";
 "Size" = "Size";
+"Size: %@" = "Size: %@";
 "Skip" = "Skip";
 "Skip .DS_Store and resource forks" = "Skip .DS_Store and resource forks";
 "Skip .DS_Store and resource forks when compressing" = "Skip .DS_Store and resource forks when compressing";
@@ -239,7 +246,7 @@
 "That split size was not understood." = "That split size was not understood.";
 "The archive contains an unsafe path and was not extracted: %@" = "The archive contains an unsafe path and was not extracted: %@";
 "The archive engine failed with code %d." = "The archive engine failed with code %d.";
-"The bundled 7-Zip helper could not be found in Contents/Helpers. Reinstall JustArc, or set JUSTARC_7ZZ to a 7zz binary when running from a build folder." = "The bundled 7-Zip helper could not be found in Contents/Helpers. Reinstall JustArc, or set JUSTARC_7ZZ to a 7zz binary when running from a build folder.";
+"The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder." = "The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder.";
 "The bundled archive engine is missing at %@." = "The bundled archive engine is missing at %@.";
 "The disk image has no mountable file systems." = "The disk image has no mountable file systems.";
 "The disk image is in use by another program." = "The disk image is in use by another program.";

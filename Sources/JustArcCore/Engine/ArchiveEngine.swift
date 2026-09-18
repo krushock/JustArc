@@ -37,6 +37,16 @@ public struct CompressionOptions: Sendable {
     /// 7-Zip volume spec such as "100m" or "4480m".
     public var volumeSize: String?
     public var excludeMacMetadata: Bool
+    /// How zip archives are encrypted. AES-256 is strong; ZipCrypto opens in more
+    /// tools, including Info-ZIP `unzip`, but is weak.
+    public var zipEncryption: ZipEncryption
+
+    public enum ZipEncryption: String, Sendable, CaseIterable {
+        case aes256 = "AES256"
+        case aes192 = "AES192"
+        case aes128 = "AES128"
+        case zipCrypto = "ZipCrypto"
+    }
 
     public init(formatKey: String = "zip",
                 level: Int = 5,
@@ -44,7 +54,8 @@ public struct CompressionOptions: Sendable {
                 encryptFileNames: Bool = false,
                 solid: Bool = true,
                 volumeSize: String? = nil,
-                excludeMacMetadata: Bool = true) {
+                excludeMacMetadata: Bool = true,
+                zipEncryption: ZipEncryption = .aes256) {
         self.formatKey = formatKey
         self.level = level
         self.password = password
@@ -52,6 +63,7 @@ public struct CompressionOptions: Sendable {
         self.solid = solid
         self.volumeSize = volumeSize
         self.excludeMacMetadata = excludeMacMetadata
+        self.zipEncryption = zipEncryption
     }
 
     public var format: ArchiveFormat? { FormatRegistry.format(forKey: formatKey) }
@@ -190,5 +202,6 @@ public enum EngineFactory {
     /// Releases every resource any engine is holding, for app termination.
     public static func releaseAll() {
         DMGMountRegistry.shared.unmountAll()
+        NestedTarCache.shared.forgetAll()
     }
 }

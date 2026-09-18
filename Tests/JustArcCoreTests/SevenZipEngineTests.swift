@@ -1,12 +1,13 @@
 import XCTest
 @testable import JustArcCore
 
-/// Round-trip tests that create real archives and read them back through 7zz.
+/// Round-trip tests that create real archives with 7zz and read them back through the
+/// in-process library.
 final class SevenZipEngineTests: XCTestCase {
     private let engine = SevenZipEngine()
 
     func testEngineIsAvailable() throws {
-        XCTAssertNoThrow(try EngineLocator.requireSevenZip())
+        XCTAssertNoThrow(try SevenZipLibrary.ensureLoaded())
     }
 
     func testZipRoundTrip() async throws {

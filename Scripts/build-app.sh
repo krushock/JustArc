@@ -16,7 +16,7 @@ swift build --configuration "$CONFIG" --product JustArc
 BIN="$(swift build --configuration "$CONFIG" --show-bin-path)"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BIN/JustArc" "$APP/Contents/MacOS/JustArc"
 
@@ -31,7 +31,10 @@ xcrun vtool -set-build-version macos "$MIN_VERSION" "$SDK_VERSION" -replace \
   -output "$APP/Contents/MacOS/JustArc" "$APP/Contents/MacOS/JustArc" 2>/dev/null
 echo "Stamped SDK $SDK_VERSION (runs on macOS $MIN_VERSION and later)"
 cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
-cp "$ROOT/Vendor/7zz" "$APP/Contents/Helpers/7zz"
+# 7-Zip's format library, loaded in process. It is not a framework, but Frameworks
+# is where the hardened runtime expects code the app loads.
+mkdir -p "$APP/Contents/Frameworks"
+cp "$ROOT/Vendor/7z.so" "$APP/Contents/Frameworks/7z.so"
 cp "$ROOT/Vendor/7zz-License.txt" "$APP/Contents/Resources/7-Zip-License.txt"
 cp "$ROOT/Sources/JustArc/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
@@ -40,7 +43,6 @@ for lproj in "$ROOT/Sources/JustArc/Resources/"*.lproj; do
   [ -d "$lproj" ] || continue
   cp -R "$lproj" "$APP/Contents/Resources/"
 done
-chmod +x "$APP/Contents/Helpers/7zz"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # Sparkle ships as a universal XCFramework. Embed the macOS slice and give the
@@ -66,7 +68,7 @@ else
 fi
 
 # Ad-hoc signing keeps Gatekeeper quiet locally; a real build signs with a Developer ID.
-codesign --force --sign - --timestamp=none "$APP/Contents/Helpers/7zz" 2>/dev/null || true
+codesign --force --sign - --timestamp=none "$APP/Contents/Frameworks/7z.so" 2>/dev/null || true
 codesign --force --deep --sign - --timestamp=none "$APP" 2>/dev/null || true
 
 echo "Built $APP"

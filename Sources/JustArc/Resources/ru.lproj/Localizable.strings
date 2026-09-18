@@ -8,13 +8,16 @@
 "%@ expands to a very large amount of data." = "%@ распаковывается в очень большой объём данных.";
 "%@ file" = "Файл %@";
 "%@ has no mountable file systems." = "В образе %@ нет монтируемых файловых систем.";
+"%@ holds a single file. Choose one file, or save as TAR + %@ instead." = "Формат %@ вмещает только один файл. Выберите один файл или сохраните как TAR + %@.";
 "%@ is empty." = "Архив %@ пуст.";
+"%@ is not a volume size." = "«%@» — неверный размер тома.";
 "%@ is not an executable." = "%@ не является исполняемым файлом.";
 "%@ is not installed. %@" = "%@ не установлен. %@";
 "%@ is protected. Enter its password to continue." = "Архив %@ защищён. Введите пароль, чтобы продолжить.";
 "%@ is stored in %@ and has not been downloaded to this Mac. Open it in Finder to download it, and check that %@ is running." = "Файл %@ хранится в %@ и ещё не загружен на этот Mac. Откройте его в Finder, чтобы загрузить, и проверьте, что %@ запущен.";
 "%@ was edited outside JustArc." = "Файл %@ был изменён вне JustArc.";
 "%@ was not found after extraction." = "Файл %@ не найден после распаковки.";
+"%@ was not found." = "%@ не найден.";
 "%d files opened from this archive were edited outside JustArc." = "Файлов из этого архива изменено вне JustArc: %d.";
 "%d folders already exist in “%@”." = "В папке «%@» уже есть папок: %d.";
 "%d items already exist in “%@”." = "В папке «%@» уже есть объектов: %d.";
@@ -92,6 +95,7 @@
 "Encrypted: %@" = "Зашифрован: %@";
 "Enter a new name for this item inside the archive." = "Введите новое имя объекта внутри архива.";
 "Enter the archive password" = "Введите пароль архива";
+"Everything is Ok" = "Ошибок не найдено";
 "Extract" = "Распаковать";
 "Extract All…" = "Распаковать всё…";
 "Extract Selected…" = "Распаковать выбранное…";
@@ -106,6 +110,7 @@
 "Filename Encoding" = "Кодировка имён файлов";
 "Files" = "Файлы";
 "Files: %@" = "Файлов: %@";
+"Files: %d" = "Файлов: %d";
 "Filter" = "Фильтр";
 "Filter the list" = "Отфильтровать список";
 "Find…" = "Найти…";
@@ -131,6 +136,7 @@
 "JustArc Settings" = "Настройки JustArc";
 "JustArc cannot read %@ archives." = "JustArc не может читать архивы %@.";
 "JustArc cannot write %@ archives. Save a copy in another format." = "JustArc не может записывать архивы %@. Сохраните копию в другом формате.";
+"JustArc cannot write to %@." = "JustArc не может записывать в %@.";
 "JustArc could not complete that command." = "JustArc не удалось выполнить команду.";
 "JustArc could not create %@." = "JustArc не удалось создать %@.";
 "JustArc could not extract %@." = "JustArc не удалось распаковать %@.";
@@ -214,6 +220,7 @@
 "Show password" = "Показать пароль";
 "Simplified Chinese (GBK)" = "Упрощённая китайская (GBK)";
 "Size" = "Размер";
+"Size: %@" = "Размер: %@";
 "Skip" = "Пропустить";
 "Skip .DS_Store and resource forks" = "Пропускать .DS_Store и ресурсные вилки";
 "Skip .DS_Store and resource forks when compressing" = "Пропускать .DS_Store и ресурсные вилки при сжатии";
@@ -239,7 +246,7 @@
 "That split size was not understood." = "Не удалось разобрать размер тома.";
 "The archive contains an unsafe path and was not extracted: %@" = "Архив содержит небезопасный путь и не был распакован: %@";
 "The archive engine failed with code %d." = "Архивный движок завершился с кодом %d.";
-"The bundled 7-Zip helper could not be found in Contents/Helpers. Reinstall JustArc, or set JUSTARC_7ZZ to a 7zz binary when running from a build folder." = "Не найден встроенный компонент 7-Zip в Contents/Helpers. Переустановите JustArc или задайте переменную JUSTARC_7ZZ с путём к 7zz при запуске из папки сборки.";
+"The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder." = "Не удалось загрузить встроенную библиотеку 7-Zip из Contents/Frameworks. Переустановите JustArc или задайте переменную JUSTARC_7Z_LIBRARY с путём к 7z.so при запуске из папки сборки.";
 "The bundled archive engine is missing at %@." = "Встроенный архивный движок отсутствует: %@.";
 "The disk image has no mountable file systems." = "В образе диска нет монтируемых файловых систем.";
 "The disk image is in use by another program." = "Образ диска занят другой программой.";

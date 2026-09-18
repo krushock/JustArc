@@ -1,19 +1,16 @@
 import Foundation
 
-/// Finds the bundled 7zz and any optional user-installed tools.
+/// Finds the bundled 7-Zip library and any optional user-installed tools.
 public enum EngineLocator {
     public static let sevenZipName = "7zz"
 
-    /// Search order: app bundle Helpers, app bundle MacOS, JUSTARC_7ZZ override,
-    /// the repository Vendor folder during development, then Homebrew.
+    /// The 7zz command-line tool. The app itself no longer runs it (see
+    /// `sevenZipLibrary`); the tests use it to build fixtures independently of the
+    /// code under test. Search order: JUSTARC_7ZZ override, the repository Vendor
+    /// folder, then Homebrew.
     public static var sevenZip: URL? = {
         var candidates: [URL] = []
 
-        if let resourceURL = Bundle.main.resourceURL {
-            let contents = resourceURL.deletingLastPathComponent()
-            candidates.append(contents.appendingPathComponent("Helpers/\(sevenZipName)"))
-            candidates.append(contents.appendingPathComponent("MacOS/\(sevenZipName)"))
-        }
         if let override = ProcessInfo.processInfo.environment["JUSTARC_7ZZ"] {
             candidates.append(URL(fileURLWithPath: override))
         }
@@ -22,6 +19,24 @@ public enum EngineLocator {
         candidates.append(URL(fileURLWithPath: "/usr/local/bin/\(sevenZipName)"))
 
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    }()
+
+    public static let sevenZipLibraryName = "7z.so"
+
+    /// 7-Zip's format library, loaded into the app so archives are read and written
+    /// without a helper process. Search order: the app bundle's Frameworks folder, a
+    /// JUSTARC_7Z_LIBRARY override, then the repository Vendor folder during development.
+    public static var sevenZipLibrary: URL? = {
+        var candidates: [URL] = []
+        if let resourceURL = Bundle.main.resourceURL {
+            let contents = resourceURL.deletingLastPathComponent()
+            candidates.append(contents.appendingPathComponent("Frameworks/\(sevenZipLibraryName)"))
+        }
+        if let override = ProcessInfo.processInfo.environment["JUSTARC_7Z_LIBRARY"] {
+            candidates.append(URL(fileURLWithPath: override))
+        }
+        candidates.append(contentsOf: developmentVendorCandidates(for: sevenZipLibraryName))
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }()
 
     public static let bsdTar = URL(fileURLWithPath: "/usr/bin/bsdtar")
@@ -56,12 +71,12 @@ public enum EngineLocator {
 
     public static func requireSevenZip() throws -> URL {
         guard let sevenZip else {
-            throw ArchiveError.engineMissing("Contents/Helpers/\(sevenZipName)")
+            throw ArchiveError.engineMissing("Vendor/\(sevenZipName)")
         }
         return sevenZip
     }
 
-    /// Walks up from the compiled binary to find Vendor/7zz when running from a build folder.
+    /// Walks up from the compiled binary to find Vendor/ when running from a build folder.
     private static func developmentVendorCandidates(for name: String) -> [URL] {
         var results: [URL] = []
         var directory = URL(fileURLWithPath: CommandLine.arguments.first ?? "")

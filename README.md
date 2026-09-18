@@ -105,7 +105,14 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 - `Sources/JustArcCore` — engine, models and safety checks. No AppKit, fully tested.
 - `Sources/JustArc` — the AppKit app: launch routing, Quick Extract, browser window.
-- `Vendor/7zz` — the 7-Zip binary, universal, under the GNU LGPL. Refresh it with
+- `Sources/SevenZipBridge` — a small C bridge over 7-Zip's format library, plus the
+  vendored 7-Zip 25.01 source it compiles against. Archives are read and written in
+  process; nothing runs as a subprocess, so passwords never appear in a command line.
+- `Vendor/7z.so` — 7-Zip's format library, universal, under the GNU LGPL, copied into
+  `Contents/Frameworks`. Rebuild it from the vendored source with
+  `Scripts/build-7z-library.sh`.
+- `Vendor/7zz` — the 7-Zip command-line tool. The app does not ship it; the tests use
+  it to build fixtures independently of the code under test. Refresh it with
   `Scripts/fetch-7zz.sh`.
 
 ## Other things it does
@@ -170,11 +177,12 @@ when the key is missing, and Sparkle refuses to install an unsigned update.
 
 - Notarization is untested here, because this machine has only an Apple Development
   certificate. Everything up to it is verified: hardened runtime, entitlements, and a
-  deep signature over the app, the 7-Zip helper and the Sparkle framework.
+  deep signature over the app, the 7-Zip library and the Sparkle framework.
 - No appcast is published yet, so Check for Updates has nothing to find.
 - StuffIt and other legacy formats are not read. That needs XADMaster.
-- Passwords reach 7-Zip and RAR as command line arguments, so they are briefly visible
-  to other processes of the same user. Moving to an in-process 7-Zip library would fix
-  this and is the main reason to do it.
+- RARLAB's `rar` takes the password as a command line argument, so while a RAR archive
+  is being written it is briefly visible to other processes of the same user. Every
+  other format, and reading RAR, goes through the in-process 7-Zip library.
+- 7-Zip reads Zstandard but cannot write it, so `.zst` and `.tar.zst` are read-only.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.

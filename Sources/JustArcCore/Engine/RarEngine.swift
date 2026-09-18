@@ -210,3 +210,53 @@ struct EntryStaging {
         try? FileManager.default.removeItem(at: temporaryRoot)
     }
 }
+
+/// Turns a command-line tool's percentage output into progress updates. RARLAB's
+/// `rar` prints progress the same way 7-Zip's command-line tool did.
+final class ProgressReporter: @unchecked Sendable {
+    private let handler: ProgressHandler?
+    private let lock = NSLock()
+    private var lastFraction: Double = -1
+    private var lastFile: String?
+
+    init(handler: ProgressHandler?) {
+        self.handler = handler
+    }
+
+    func consume(_ chunk: String) {
+        guard let handler else { return }
+        // 7-Zip rewrites the progress line with carriage returns and backspaces.
+        let pieces = chunk
+            .replacingOccurrences(of: "\u{8}", with: "")
+            .components(separatedBy: CharacterSet(charactersIn: "\r\n"))
+
+        for piece in pieces {
+            let line = piece.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+
+            var fraction: Double?
+            if let percentRange = line.range(of: #"^\s*(\d{1,3})%"#, options: .regularExpression) {
+                let digits = line[percentRange].filter(\.isNumber)
+                if let value = Double(digits) { fraction = min(max(value / 100, 0), 1) }
+            }
+
+            var file: String?
+            if let dashRange = line.range(of: " - ") {
+                file = String(line[dashRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+            } else if line.hasPrefix("- ") {
+                file = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            }
+
+            lock.lock()
+            if let fraction { lastFraction = fraction }
+            if let file, !file.isEmpty { lastFile = file }
+            let reportFraction = lastFraction < 0 ? nil : lastFraction
+            let reportFile = lastFile
+            lock.unlock()
+
+            if fraction != nil || file != nil {
+                handler(ArchiveProgress(fraction: reportFraction, currentFile: reportFile))
+            }
+        }
+    }
+}
