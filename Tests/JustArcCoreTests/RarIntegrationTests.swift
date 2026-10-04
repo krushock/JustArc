@@ -13,6 +13,7 @@ final class RarIntegrationTests: XCTestCase {
         try XCTSkipUnless(enabled, "set JUSTARC_NETWORK_TESTS=1 to run")
 
         let installation = try await RarToolInstaller.install { _ in }
+        XCTAssertTrue(installation.wasVerified, "the download was installed without matching a checksum")
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: installation.tool.path))
         XCTAssertFalse(installation.version.isEmpty)
         XCTAssertTrue(RarToolInstaller.isManagedInstall)
@@ -55,6 +56,28 @@ final class RarIntegrationTests: XCTestCase {
                                 in: archive, password: nil)
         listing = try await engine.list(archive: archive, password: nil, encodingCodePage: nil)
         XCTAssertTrue(listing.entries.contains { $0.path == "payload/docs/renamed.txt" })
+    }
+
+    /// The hashes built into JustArc came from Homebrew's record. This fetches each
+    /// file from rarlab.com and checks that it really has the hash on record, for
+    /// the Intel build as well as the one this Mac would install.
+    func testTheBuiltInChecksumsMatchWhatRarlabServes() async throws {
+        try XCTSkipUnless(enabled, "set JUSTARC_NETWORK_TESTS=1 to run")
+        XCTAssertFalse(RarToolInstaller.knownChecksums.isEmpty)
+
+        for (fileName, expected) in RarToolInstaller.knownChecksums.sorted(by: { $0.key < $1.key }) {
+            let url = try XCTUnwrap(URL(string: "https://www.rarlab.com/rar/\(fileName)"))
+            let (data, response) = try await URLSession.shared.data(from: url)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200, fileName)
+
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("justarc-check-\(fileName)")
+            try data.write(to: file)
+            defer { try? FileManager.default.removeItem(at: file) }
+            let digest = try RarToolInstaller.sha256(of: file)
+            print("rarlab \(fileName): \(data.count) bytes, sha256 \(digest)")
+            XCTAssertEqual(digest, expected, "\(fileName) is not what the built-in checksum says")
+            XCTAssertEqual(RarToolInstaller.verdict(digest: digest, fileName: fileName, published: [:]), .verified)
+        }
     }
 
     func testEncryptedRarRoundTrip() async throws {

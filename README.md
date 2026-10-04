@@ -239,7 +239,8 @@ Each of these has a test built from an archive made to break it, in
   into JustArc for the release it knows, otherwise the one Homebrew records for its
   `rar` cask. RARLAB publishes no checksums itself, so a release newer than both has
   nothing to be checked against; JustArc says so and installs it only if told to.
-  The built-in hashes are Homebrew's, not ones computed here from a download.
+  The built-in hashes are Homebrew's; `RarIntegrationTests`, run with
+  `JUSTARC_NETWORK_TESTS=1`, downloads both builds from rarlab.com and confirms them.
 - Cancelling an extraction undoes it: new files and folders are removed, and files
   that were replaced or moved aside are put back. Two exceptions: a replaced file on
   a volume without hard links (exFAT, FAT), and one replaced while extracting a disk
