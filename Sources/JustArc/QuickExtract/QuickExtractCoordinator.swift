@@ -38,6 +38,8 @@ final class QuickExtractCoordinator {
         // Step 0: the archive may be a cloud placeholder that is not on disk yet.
         do {
             try await downloadIfNeeded(archive)
+        } catch let error as ArchiveError where error == .cancelled {
+            return
         } catch {
             present(error: error, archive: archive)
             return
@@ -45,6 +47,8 @@ final class QuickExtractCoordinator {
 
         // Step 1: read the table of contents, asking for a password if the archive needs one.
         var password: String? = KeychainStore.password(for: archive)
+        // A password is only put in the keychain once it has opened the archive.
+        var passwordToRemember: String?
         var listing: ArchiveListing
         var attempt = 0
         while true {
@@ -56,9 +60,7 @@ final class QuickExtractCoordinator {
                                                         window: nil,
                                                         retry: attempt > 0) else { return }
                 password = response.password
-                if response.rememberInKeychain {
-                    KeychainStore.save(password: response.password, for: archive)
-                }
+                passwordToRemember = response.rememberInKeychain ? response.password : nil
                 attempt += 1
             } catch {
                 present(error: error, archive: archive)
@@ -108,9 +110,7 @@ final class QuickExtractCoordinator {
                 return
             }
             password = response.password
-            if response.rememberInKeychain {
-                KeychainStore.save(password: response.password, for: archive)
-            }
+            passwordToRemember = response.rememberInKeychain ? response.password : nil
         }
 
         do {
@@ -121,9 +121,13 @@ final class QuickExtractCoordinator {
                                                              roots: roots,
                                                              resolution: resolution,
                                                              password: &password,
+                                                             remember: &passwordToRemember,
                                                              cancellation: cancellation,
                                                              panel: panel)
             panel.finish()
+            if let passwordToRemember, passwordToRemember == password {
+                KeychainStore.save(password: passwordToRemember, for: archive)
+            }
             finishUp(archive: archive, plan: plan, outcome: outcome)
         } catch let error as ArchiveError where error == .cancelled {
             panel.finish()
@@ -143,6 +147,7 @@ final class QuickExtractCoordinator {
                                           roots: [String],
                                           resolution: ConflictPrompt.Resolution,
                                           password: inout String?,
+                                          remember: inout String?,
                                           cancellation: CancellationToken,
                                           panel: ProgressWindowController) async throws -> ExtractionOutcome {
         var attempt = 0
@@ -163,14 +168,19 @@ final class QuickExtractCoordinator {
                                                           Task { @MainActor in panel.update(progress) }
                                                       })
             } catch let error as ArchiveError where error.isPasswordProblem {
-                guard attempt < 3,
-                      let response = PasswordPrompt.ask(archiveName: archive.lastPathComponent,
-                                                        window: panel.window,
-                                                        retry: true) else { throw error }
-                password = response.password
-                if response.rememberInKeychain {
-                    KeychainStore.save(password: response.password, for: archive)
+                // A remembered password that no longer opens this archive is forgotten.
+                if attempt == 0, password != nil, password == KeychainStore.password(for: archive) {
+                    KeychainStore.remove(for: archive)
                 }
+                guard attempt < 3 else { throw error }
+                // Giving up at the prompt is a cancel, not a failure to report.
+                guard let response = PasswordPrompt.ask(archiveName: archive.lastPathComponent,
+                                                        window: panel.window,
+                                                        retry: attempt > 0 || password != nil) else {
+                    throw ArchiveError.cancelled
+                }
+                password = response.password
+                remember = response.rememberInKeychain ? response.password : nil
                 attempt += 1
             }
         }
@@ -188,7 +198,9 @@ final class QuickExtractCoordinator {
             return
         }
 
-        if Preferences.moveArchiveToTrash {
+        // Only once everything in it has been extracted: with some folders skipped,
+        // the archive still holds the only copy of what was in them.
+        if Preferences.moveArchiveToTrash, outcome.skippedFolders.isEmpty {
             try? FileManager.default.trashItem(at: archive, resultingItemURL: nil)
         }
         if Preferences.revealInFinder {

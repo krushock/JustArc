@@ -68,6 +68,17 @@ final class EditedFileWatcher {
         tracked.removeValue(forKey: entryPath)
     }
 
+    /// Stops tracking an entry and, when it is a folder, everything inside it.
+    func stopTracking(under path: String) {
+        let prefix = path + "/"
+        tracked = tracked.filter { $0.key != path && !$0.key.hasPrefix(prefix) }
+    }
+
+    /// The copy of an entry that is open for editing, if there is one.
+    func localURL(for entryPath: String) -> URL? {
+        tracked[entryPath]?.localURL
+    }
+
     func removeAll() {
         tracked.removeAll()
     }

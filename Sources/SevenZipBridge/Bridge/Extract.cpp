@@ -9,6 +9,7 @@
 
 #include <copyfile.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -270,6 +271,12 @@ Z7_COM7F_IMF(ExtractCallback::GetStream(UInt32 index, ISequentialOutStream **out
     }
 
     const std::string path = destination + "/" + relative;
+    // Refused before anything is created: otherwise folders are made one inside the
+    // other until the system gives up, leaving a chain too deep to delete easily.
+    if (path.size() >= PATH_MAX - 64) {
+        Record(Failure::writeError, "its path is longer than macOS allows");
+        return E_ABORT;
+    }
     const std::string parent = path.substr(0, path.find_last_of('/'));
     if (!MakeDirectories(parent)) {
         Record(Failure::writeError, std::string("could not create a folder: ") + std::strerror(errno));

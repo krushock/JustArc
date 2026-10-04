@@ -1,0 +1,7 @@
+/* Titles of the entries JustArc adds to the Finder's Services menu. The keys are the
+   "default" titles under NSServices in Info.plist. */
+
+"Compress with JustArc" = "Сжать с помощью JustArc";
+"Compress with JustArc (Choose Format)" = "Сжать с помощью JustArc (выбрать формат)";
+"Extract with JustArc" = "Распаковать с помощью JustArc";
+"Open Archive in JustArc" = "Открыть архив в JustArc";

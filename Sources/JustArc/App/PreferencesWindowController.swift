@@ -143,6 +143,14 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
         loadValues()
     }
 
+    /// The window is kept for the life of the app, and some of these settings are
+    /// also changed elsewhere: "Always do this" in a conflict prompt, for one. Shown
+    /// stale, the next click on any control here would write the old values back.
+    override func viewWillAppear() {
+        loadValues()
+        super.viewWillAppear()
+    }
+
     private func loadValues() {
         destinationPopUp.selectItem(at: ExtractDestination.allCases
             .firstIndex(of: Preferences.extractDestination) ?? 0)
@@ -215,10 +223,19 @@ final class ArchiveSettingsViewController: SettingsPaneViewController {
             [NSGridCell.emptyContentView, metadataBox],
         ]))
 
+        loadValues()
+    }
+
+    private func loadValues() {
         formatPopUp.selectItem(at: formatPopUp.itemArray.firstIndex {
             ($0.representedObject as? String) == Preferences.defaultFormatKey } ?? 0)
         levelPopUp.selectItem(at: levels.firstIndex { $0.1 == Preferences.defaultLevel } ?? 3)
         metadataBox.state = Preferences.excludeMacMetadata ? .on : .off
+    }
+
+    override func viewWillAppear() {
+        loadValues()
+        super.viewWillAppear()
     }
 
     @objc private func valueChanged() {

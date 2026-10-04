@@ -9,11 +9,18 @@ APP="$ROOT/build/JustArc.app"
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
+# A release runs on both Apple silicon and Intel, as the bundled 7z.so and Sparkle
+# already do. A debug build is for this Mac only, and builds in half the time.
+ARCHS=()
+if [ "$CONFIG" = "release" ]; then
+  ARCHS=(--arch arm64 --arch x86_64)
+fi
+
 echo "Building JustArc ($CONFIG)…"
 cd "$ROOT"
-swift build --configuration "$CONFIG" --product JustArc
+swift build --configuration "$CONFIG" --product JustArc ${ARCHS[@]+"${ARCHS[@]}"}
 
-BIN="$(swift build --configuration "$CONFIG" --show-bin-path)"
+BIN="$(swift build --configuration "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -28,7 +35,7 @@ cp "$BIN/JustArc" "$APP/Contents/MacOS/JustArc"
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
 MIN_VERSION="$(otool -l "$APP/Contents/MacOS/JustArc" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')"
 xcrun vtool -set-build-version macos "$MIN_VERSION" "$SDK_VERSION" -replace \
-  -output "$APP/Contents/MacOS/JustArc" "$APP/Contents/MacOS/JustArc" 2>/dev/null
+  -output "$APP/Contents/MacOS/JustArc" "$APP/Contents/MacOS/JustArc"
 echo "Stamped SDK $SDK_VERSION (runs on macOS $MIN_VERSION and later)"
 cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
 # 7-Zip's format library, loaded in process. It is not a framework, but Frameworks
@@ -64,11 +71,16 @@ if [ -d "$SPARKLE" ]; then
     install_name_tool -delete_rpath "$stale" "$APP/Contents/MacOS/JustArc" 2>/dev/null || true
   done
 else
-  echo "warning: Sparkle.framework not found; the updater will be unavailable" >&2
+  # The executable links Sparkle, so a bundle without it would not launch at all.
+  echo "error: Sparkle.framework not found at $SPARKLE" >&2
+  exit 1
 fi
 
 # Ad-hoc signing keeps Gatekeeper quiet locally; a real build signs with a Developer ID.
-codesign --force --sign - --timestamp=none "$APP/Contents/Frameworks/7z.so" 2>/dev/null || true
-codesign --force --deep --sign - --timestamp=none "$APP" 2>/dev/null || true
+# vtool and install_name_tool above invalidated the linker's own signature, and on
+# Apple silicon an unsigned binary is killed at launch, so a failure here is fatal.
+codesign --force --sign - --timestamp=none "$APP/Contents/Frameworks/7z.so"
+codesign --force --deep --sign - --timestamp=none "$APP"
+codesign --verify --deep --strict "$APP"
 
 echo "Built $APP"

@@ -197,6 +197,25 @@ Updates go through Sparkle. Before the first release, generate a key pair with
 as `SUPublicEDKey`, and publish an appcast at the `SUFeedURL`. The release script warns
 when the key is missing, and Sparkle refuses to install an unsigned update.
 
+## What extraction promises
+
+Archives are untrusted input, and the destination is the user's own data.
+
+- A file is decoded under a temporary name and moved into place only when it is
+  whole. A wrong password, a damaged archive or a cancel leaves whatever was there
+  before exactly as it was, whichever overwrite rule was chosen.
+- Nothing is written outside the destination: not through `..`, an absolute path, a
+  symbolic link planted by an earlier entry, or a link that reaches out by way of
+  another link. Links pointing outside are not created.
+- A folder is never removed to make room for a file, and the folder being extracted
+  into is never one of the things "replaced".
+- setuid, setgid and sticky bits are not restored, and the user's umask applies.
+- Sizes an archive declares are not trusted: a stream that expands without limit is
+  stopped before the disk fills.
+
+Each of these has a test built from an archive made to break it, in
+`ExtractionSafetyTests` and `ReviewRegressionTests`.
+
 ## Known gaps
 
 - Notarization is untested here, because this machine has only an Apple Development
@@ -213,5 +232,16 @@ when the key is missing, and Sparkle refuses to install an unsigned update.
   has not been tried, because nothing here can drive the pointer.
 - Extended attributes and resource forks that macOS stores in `__MACOSX` and `._` files
   are skipped on extraction rather than applied to the extracted files.
+- The RAR tools are fetched from rarlab.com over TLS and nothing more: RARLAB
+  publishes no checksums and signs the binary ad hoc, so there is nothing to verify
+  it against.
+- Cancelling an extraction leaves the files that had already finished. Each file is
+  written whole or not at all, but the ones before the cancel stay.
+- One disk image open in two places shares a single mount, which is given back when
+  either is done; the other re-attaches on its next read.
+- With "Keep Both" for existing files, Finder is shown the original's name after
+  extracting rather than the new copy's.
+- Messages that come from 7-Zip itself, such as the reason an archive is damaged,
+  are in English whatever the app's language.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.

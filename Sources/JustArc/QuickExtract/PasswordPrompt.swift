@@ -46,11 +46,15 @@ enum PasswordPrompt {
         alert.accessoryView = container
         alert.window.initialFirstResponder = secureField
 
-        let response = alert.runModal()
+        // The checkbox holds its target weakly, so the toggle is kept alive for exactly
+        // as long as the prompt is up, and the fields with what was typed in them go
+        // away with it.
+        let response = withExtendedLifetime(toggle) { alert.runModal() }
         guard response == .alertFirstButtonReturn else { return nil }
+        // An empty answer is still an answer: it is tried, fails, and the prompt
+        // comes back saying so, rather than the archive being silently given up on.
         let value = plainField.isHidden ? secureField.stringValue : plainField.stringValue
-        guard !value.isEmpty else { return nil }
-        return Response(password: value, rememberInKeychain: rememberBox.state == .on)
+        return Response(password: value, rememberInKeychain: rememberBox.state == .on && !value.isEmpty)
     }
 }
 
@@ -58,13 +62,11 @@ enum PasswordPrompt {
 private final class ShowPasswordToggle: NSObject {
     private let secure: NSSecureTextField
     private let plain: NSTextField
-    private static var retained: [ShowPasswordToggle] = []
 
     init(secure: NSSecureTextField, plain: NSTextField) {
         self.secure = secure
         self.plain = plain
         super.init()
-        Self.retained.append(self)
     }
 
     @objc func toggled(_ sender: NSButton) {

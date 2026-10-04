@@ -30,9 +30,10 @@ extension ArchiveBrowserViewController {
         guard !items.isEmpty else { return }
         let folder = folder ?? currentFolderPath
         guard !session.isReadOnly else {
-            present(ArchiveError.notWritable(session.format?.displayName ?? "this format"))
+            present(ArchiveError.notWritable(session.format?.displayName ?? L("this format")))
             return
         }
+        guard !isBusy else { return }
 
         // An untitled window just stages the files until the user saves.
         guard let archiveURL = session.archiveURL else {
@@ -41,16 +42,20 @@ extension ArchiveBrowserViewController {
             return
         }
 
+        // What is added replaces what has the same path, so a copy of the old file
+        // that is open for editing no longer stands for anything in the archive.
+        for item in items {
+            editedFiles.stopTracking(under: ArchivePath.join(folder, item.lastPathComponent))
+        }
         Task {
-            let options = CompressionOptions(formatKey: session.format?.key ?? "zip",
-                                             level: Preferences.defaultLevel,
-                                             password: session.password,
-                                             excludeMacMetadata: Preferences.excludeMacMetadata)
             let done = await runOperation(title: L("Adding to %@", session.displayName)) { cancellation, progress in
                 // Files dragged in from a cloud folder have to be fetched first.
                 try await CloudFile.materializeAll(items, cancellation: cancellation, progress: progress)
-                try await self.engine.add(items: items, to: archiveURL, into: folder, options: options,
-                                          cancellation: cancellation, progress: progress)
+                try await self.withPasswordRetry {
+                    try await self.engine.add(items: items, to: archiveURL, into: folder,
+                                              options: self.currentCompressionOptions(),
+                                              cancellation: cancellation, progress: progress)
+                }
             }
             if done != nil { loadArchive() }
         }
@@ -98,20 +103,22 @@ extension ArchiveBrowserViewController {
                                                       destination: destination,
                                                       window: view.window) else { return }
 
-        let job = ExtractionJob(archive: archiveURL,
-                                destination: destination,
-                                password: session.password,
-                                allEntries: session.listing.entries,
-                                selectedEntries: entries,
-                                roots: archivePaths,
-                                folderConflicts: resolution.folderConflicts,
-                                folderResolution: resolution.folder,
-                                fileOverwrite: resolution.file)
-
+        let allEntries = session.listing.entries
         Task {
             let outcome = await runOperation(title: label) { cancellation, progress in
-                try await ExtractionRunner.run(job, engine: self.engine,
-                                               cancellation: cancellation, progress: progress)
+                try await self.withPasswordRetry {
+                    let job = ExtractionJob(archive: archiveURL,
+                                            destination: destination,
+                                            password: self.session.password,
+                                            allEntries: allEntries,
+                                            selectedEntries: entries,
+                                            roots: archivePaths,
+                                            folderConflicts: resolution.folderConflicts,
+                                            folderResolution: resolution.folder,
+                                            fileOverwrite: resolution.file)
+                    return try await ExtractionRunner.run(job, engine: self.engine,
+                                                          cancellation: cancellation, progress: progress)
+                }
             }
             guard let outcome else { return }
 
@@ -138,10 +145,13 @@ extension ArchiveBrowserViewController {
             navigateToNode(node)
             return
         }
+        // A copy that can be written back is kept and watched; from an archive that
+        // cannot be changed the file is only there to be looked at.
+        let editable = session.archiveURL != nil && session.canModifyContents
+            && session.stagedSource(for: node.path) == nil
         Task {
-            guard let url = await materialize(node: node) else { return }
-            // Remember what it looked like, so an edit in another app can be written back.
-            if session.archiveURL != nil, session.canModifyContents, session.stagedSource(for: node.path) == nil {
+            guard let url = await materialize(node: node, forEditing: editable) else { return }
+            if editable, editedFiles.localURL(for: node.path) == nil {
                 editedFiles.track(localURL: url, entryPath: node.path)
             }
             NSWorkspace.shared.open(url)
@@ -151,6 +161,11 @@ extension ArchiveBrowserViewController {
     /// Asks whether edits made in another app should go back into the archive.
     func offerToUpdate(_ changed: [EditedFileWatcher.Tracked]) {
         guard let archiveURL = session.archiveURL, session.canModifyContents else { return }
+        // Asked again the next time the app comes forward, once the archive is free
+        // and the question already on screen has been answered.
+        guard !isBusy, !isOfferingUpdate else { return }
+        isOfferingUpdate = true
+        defer { isOfferingUpdate = false }
 
         let alert = NSAlert()
         alert.messageText = changed.count == 1
@@ -168,19 +183,22 @@ extension ArchiveBrowserViewController {
             return
         }
 
-        let options = currentCompressionOptions()
         Task {
             let done = await runOperation(title: L("Updating %@", session.displayName)) { cancellation, progress in
                 for entry in changed {
-                    try await self.engine.update(fileAt: entry.localURL,
-                                                 entryPath: entry.entryPath,
-                                                 in: archiveURL,
-                                                 options: options,
-                                                 cancellation: cancellation,
-                                                 progress: progress)
+                    try await self.withPasswordRetry {
+                        try await self.engine.update(fileAt: entry.localURL,
+                                                     entryPath: entry.entryPath,
+                                                     in: archiveURL,
+                                                     options: self.currentCompressionOptions(),
+                                                     cancellation: cancellation,
+                                                     progress: progress)
+                    }
+                    // Only what was actually written back stops being "edited"; a
+                    // failure partway leaves the rest to be offered again.
+                    await MainActor.run { self.editedFiles.acknowledge(entryPath: entry.entryPath) }
                 }
             }
-            for entry in changed { editedFiles.acknowledge(entryPath: entry.entryPath) }
             if done != nil { loadArchive() }
         }
     }
@@ -191,36 +209,86 @@ extension ArchiveBrowserViewController {
             panel.orderOut(nil)
             return
         }
-        let nodes = selectedNodesForCommand().filter { !$0.isDirectory }
-        guard !nodes.isEmpty else { return }
-        Task {
-            var urls: [URL] = []
-            for node in nodes.prefix(20) {
-                if let url = await materialize(node: node, quiet: true) { urls.append(url) }
-            }
-            guard !urls.isEmpty else { return }
-            setPreviewItems(urls)
-            panel.makeKeyAndOrderFront(nil)
-            panel.reloadData()
-        }
+        loadPreviewItems(showing: panel, thenOpen: true)
     }
 
-    /// Extracts one entry into this window's scratch folder so it can be opened or previewed.
-    func materialize(node: EntryTree.Node, quiet: Bool = false) async -> URL? {
+    /// Extracts one entry into this window's scratch space so it can be opened,
+    /// previewed or dragged out.
+    ///
+    /// - Parameters:
+    ///   - forEditing: hand back the copy another app may be editing, making one if
+    ///     there is none. Otherwise the file is extracted afresh after every change
+    ///     to the archive, so what is shown is what the archive holds.
+    ///   - askingForPassword: whether a missing or wrong password may put up the
+    ///     prompt. A drag in progress is no moment for a dialog.
+    func materialize(node: EntryTree.Node, quiet: Bool = false, forEditing: Bool = false,
+                     askingForPassword: Bool = true) async -> URL? {
         if let staged = session.stagedSource(for: node.path) { return staged }
         guard let archiveURL = session.archiveURL, let entry = node.entry else { return nil }
 
-        let cached = scratchURL(for: entry)
-        if FileManager.default.fileExists(atPath: cached.path) { return cached }
+        if forEditing, let open = editedFiles.localURL(for: entry.path),
+           FileManager.default.fileExists(atPath: open.path) {
+            return open
+        }
+        let root = forEditing ? editingRoot() : viewingRoot()
+        let cached = root.appendingPathComponent(entry.path)
+        if !forEditing, FileManager.default.fileExists(atPath: cached.path) { return cached }
 
         do {
-            return try await engine.extractSingle(archive: archiveURL,
-                                                  entry: entry,
-                                                  to: scratchRoot(),
-                                                  password: session.password)
+            let extract = {
+                try await self.engine.extractSingle(archive: archiveURL, entry: entry, to: root,
+                                                    password: self.session.password)
+            }
+            return askingForPassword ? try await withPasswordRetry(extract) : try await extract()
+        } catch let error as ArchiveError where error == .cancelled {
+            return nil
         } catch {
             if !quiet { present(error) }
             return nil
+        }
+    }
+
+    /// Runs work that needs the archive's password, asking for it when the engine
+    /// says it is missing or wrong, and trying again.
+    ///
+    /// A zip lists without its password, so the first sign that one is needed is a
+    /// file failing to decode. A password remembered for this path is tried once
+    /// before anyone is asked, and forgotten if it no longer works; one typed in is
+    /// only put in the keychain after it has decoded something.
+    func withPasswordRetry<T>(_ work: () async throws -> T) async throws -> T {
+        var attempt = 0
+        var triedKeychain = false
+        var usingKeychainPassword = false
+        while true {
+            do {
+                let result = try await work()
+                if session.listing.containsEncryptedEntries { rememberPasswordIfProven() }
+                return result
+            } catch let error as ArchiveError where error.isPasswordProblem {
+                guard let url = session.archiveURL else { throw error }
+                if !triedKeychain {
+                    triedKeychain = true
+                    if let stored = KeychainStore.password(for: url), stored != session.password {
+                        session.password = stored
+                        usingKeychainPassword = true
+                        continue
+                    }
+                }
+                if usingKeychainPassword {
+                    KeychainStore.remove(for: url)
+                    usingKeychainPassword = false
+                    session.password = nil
+                }
+                guard let response = PasswordPrompt.ask(archiveName: session.displayName,
+                                                        window: view.window,
+                                                        retry: attempt > 0 || session.password != nil) else {
+                    passwordToRemember = nil
+                    throw ArchiveError.cancelled
+                }
+                session.password = response.password
+                passwordToRemember = response.rememberInKeychain ? response.password : nil
+                attempt += 1
+            }
         }
     }
 
@@ -255,9 +323,10 @@ extension ArchiveBrowserViewController {
         let nodes = selectedNodesForCommand()
         guard !nodes.isEmpty else { return }
         guard !session.isReadOnly else {
-            present(ArchiveError.notWritable(session.format?.displayName ?? "this format"))
+            present(ArchiveError.notWritable(session.format?.displayName ?? L("this format")))
             return
         }
+        guard !isBusy else { return }
 
         // Nothing has been written yet, so taking files back out of a new archive
         // changes nothing on disk and needs no warning.
@@ -278,11 +347,14 @@ extension ArchiveBrowserViewController {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         let entries = nodes.flatMap { $0.descendantEntries() }
-        for entry in entries { editedFiles.stopTracking(entryPath: entry.path) }
+        for node in nodes { editedFiles.stopTracking(under: node.path) }
         Task {
-            let done = await runOperation(title: L("Deleting from %@", session.displayName)) { _, _ in
-                try await self.engine.delete(entries: entries, from: archiveURL,
-                                             password: self.session.password)
+            let done = await runOperation(title: L("Deleting from %@", session.displayName),
+                                          cancellable: false) { _, _ in
+                try await self.withPasswordRetry {
+                    try await self.engine.delete(entries: entries, from: archiveURL,
+                                                 password: self.session.password)
+                }
             }
             if done != nil { loadArchive() }
         }
@@ -294,9 +366,10 @@ extension ArchiveBrowserViewController {
         // still means something: everything under it moves.
         let entry = node.entry ?? ArchiveEntry(path: node.path, isDirectory: node.isDirectory)
         guard let archiveURL = session.archiveURL, !session.isReadOnly else {
-            present(ArchiveError.notWritable(session.format?.displayName ?? "this format"))
+            present(ArchiveError.notWritable(session.format?.displayName ?? L("this format")))
             return
         }
+        guard !isBusy else { return }
 
         let alert = NSAlert()
         alert.messageText = L("Rename %@", node.name)
@@ -310,14 +383,36 @@ extension ArchiveBrowserViewController {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         let newName = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !newName.isEmpty, newName != node.name, !newName.contains("/") else { return }
+        guard !newName.isEmpty, newName != node.name else { return }
+        // A slash of either kind would move the item into a folder of that name.
+        guard !newName.contains("/"), !newName.contains("\\"), newName != ".", newName != ".." else {
+            let alert = NSAlert()
+            alert.messageText = L("“%@” cannot be used as a name.", newName)
+            alert.informativeText = L("A name cannot contain a slash.")
+            alert.addButton(withTitle: L("OK"))
+            alert.runModal()
+            return
+        }
+        if node.parent?.children.contains(where: { $0 !== node && $0.name == newName }) == true {
+            let alert = NSAlert()
+            alert.messageText = L("%@ already exists in the archive.", newName)
+            alert.informativeText = L("Choose another name, or delete the other item first.")
+            alert.addButton(withTitle: L("OK"))
+            alert.runModal()
+            return
+        }
         let newPath = ArchivePath.join(entry.parentPath, newName)
 
-        editedFiles.stopTracking(entryPath: entry.path)
+        // Copies open for editing were made under the old name, files inside a
+        // renamed folder included.
+        editedFiles.stopTracking(under: entry.path)
         Task {
-            let done = await runOperation(title: L("Renaming in %@", session.displayName)) { _, _ in
-                try await self.engine.rename(entry: entry, to: newPath,
-                                             in: archiveURL, password: self.session.password)
+            let done = await runOperation(title: L("Renaming in %@", session.displayName),
+                                          cancellable: false) { _, _ in
+                try await self.withPasswordRetry {
+                    try await self.engine.rename(entry: entry, to: newPath,
+                                                 in: archiveURL, password: self.session.password)
+                }
             }
             if done != nil { loadArchive() }
         }
@@ -329,8 +424,10 @@ extension ArchiveBrowserViewController {
         guard let archiveURL = session.archiveURL else { return }
         Task {
             let report = await runOperation(title: L("Testing %@", session.displayName)) { cancellation, progress in
-                try await self.engine.test(archive: archiveURL, password: self.session.password,
-                                           cancellation: cancellation, progress: progress)
+                try await self.withPasswordRetry {
+                    try await self.engine.test(archive: archiveURL, password: self.session.password,
+                                               cancellation: cancellation, progress: progress)
+                }
             }
             guard let report else { return }
             let alert = NSAlert()
@@ -351,10 +448,10 @@ extension ArchiveBrowserViewController {
         guard let response = PasswordPrompt.ask(archiveName: session.displayName,
                                                 window: view.window,
                                                 retry: false) else { return }
+        _ = url
         session.password = response.password
-        if response.rememberInKeychain {
-            KeychainStore.save(password: response.password, for: url)
-        }
+        // Kept for the keychain until it has been seen to open something.
+        passwordToRemember = response.rememberInKeychain ? response.password : nil
         loadArchive()
     }
 
@@ -391,14 +488,20 @@ extension ArchiveBrowserViewController {
 
     @objc func saveArchive(_ sender: Any?) {
         guard session.isUntitled || session.hasUnsavedChanges else { return }
-        guard session.archiveURL != nil else {
+        guard let archiveURL = session.archiveURL else {
             saveArchiveAs(sender)
             return
         }
-        performSave(to: session.archiveURL!, options: currentCompressionOptions())
+        performSave(to: archiveURL, options: currentCompressionOptions(), rebuild: false, then: nil)
     }
 
     @objc func saveArchiveAs(_ sender: Any?) {
+        runSaveAs(then: nil)
+    }
+
+    /// Asks where and how to save, then saves.
+    /// - Parameter completion: told whether the archive was written, once it is known.
+    func runSaveAs(then completion: ((Bool) -> Void)?) {
         let accessory = SaveOptionsAccessory()
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
@@ -414,7 +517,10 @@ extension ArchiveBrowserViewController {
             panel.nameFieldStringValue = "\(name).\(format.extensions[0])"
         }
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let chosen = panel.url else {
+            completion?(false)
+            return
+        }
         if accessory.hasUnparseableVolumeSize {
             let warning = NSAlert()
             warning.alertStyle = .warning
@@ -422,9 +528,37 @@ extension ArchiveBrowserViewController {
             warning.informativeText = L("Use a size such as 100m, 700m or 1.5g. Save without splitting?")
             warning.addButton(withTitle: L("Save Without Splitting"))
             warning.addButton(withTitle: L("Cancel"))
-            guard warning.runModal() == .alertFirstButtonReturn else { return }
+            guard warning.runModal() == .alertFirstButtonReturn else {
+                completion?(false)
+                return
+            }
         }
-        performSave(to: url, options: accessory.options())
+
+        // The format menu decides what is written, so the name has to agree with it.
+        // A name typed with another format's extension, or with none, would otherwise
+        // get one kind of archive under another kind's name.
+        let format = accessory.selectedFormat
+        var url = chosen
+        if FormatRegistry.format(for: chosen)?.key != format.key {
+            let stem = FormatRegistry.baseName(for: chosen)
+            url = chosen.deletingLastPathComponent()
+                .appendingPathComponent("\(stem.isEmpty ? L("Archive") : stem).\(format.extensions[0])")
+            if PathSafety.itemExists(at: url) {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = L("“%@” already exists. Do you want to replace it?", url.lastPathComponent)
+                alert.informativeText = L("The name was given the extension that matches the chosen format.")
+                alert.addButton(withTitle: L("Replace"))
+                alert.addButton(withTitle: L("Cancel"))
+                guard alert.runModal() == .alertFirstButtonReturn else {
+                    completion?(false)
+                    return
+                }
+            }
+        }
+        // Save As always writes the archive afresh, even over itself: the options
+        // chosen in the panel take effect only when everything is rewritten.
+        performSave(to: url, options: accessory.options(), rebuild: true, then: completion)
     }
 
     private func defaultSaveName(for format: ArchiveFormat) -> String {
@@ -434,11 +568,11 @@ extension ArchiveBrowserViewController {
         } else if let first = session.stagedRoots.first {
             stem = session.stagedRoots.count == 1
                 ? (first.lastPathComponent as NSString).deletingPathExtension
-                : "Archive"
+                : L("Archive")
         } else {
-            stem = "Archive"
+            stem = L("Archive")
         }
-        return "\(stem.isEmpty ? "Archive" : stem).\(format.extensions[0])"
+        return "\(stem.isEmpty ? L("Archive") : stem).\(format.extensions[0])"
     }
 
     func currentCompressionOptions() -> CompressionOptions {
@@ -448,27 +582,42 @@ extension ArchiveBrowserViewController {
                            excludeMacMetadata: Preferences.excludeMacMetadata)
     }
 
-    private func performSave(to url: URL, options: CompressionOptions) {
+    private func performSave(to url: URL, options: CompressionOptions, rebuild: Bool,
+                             then completion: ((Bool) -> Void)?) {
+        guard !isBusy else {
+            completion?(false)
+            return
+        }
         Task {
-            let done = await runOperation(title: L("Saving %@", url.lastPathComponent)) { cancellation, progress in
-                try await self.session.save(to: url, options: options,
-                                            cancellation: cancellation, progress: progress)
+            let done: Void? = await runOperation(title: L("Saving %@", url.lastPathComponent)) { cancellation, progress in
+                try await self.withPasswordRetry {
+                    try await self.session.save(to: url, options: options, rebuild: rebuild,
+                                                cancellation: cancellation, progress: progress)
+                }
             }
             if done != nil {
-                RecentsRecorder.note(url)
-                onArchiveChange?(url)
+                // A split archive is opened through its first volume, not the name typed.
+                let written = session.archiveURL ?? url
+                RecentsRecorder.note(written)
+                // Open copies were extracted from the archive as it was before.
+                editedFiles.removeAll()
+                onArchiveChange?(written)
                 reloadFromSession()
             }
+            completion?(done != nil)
         }
     }
 
     // MARK: - Shared plumbing
 
     /// Shows the progress panel, runs the work, and reports any failure.
-    func runOperation<T>(title: String,
+    /// - Parameter cancellable: false for work the engine cannot stop partway.
+    func runOperation<T>(title: String, cancellable: Bool = true,
                          work: @escaping (CancellationToken, @escaping ProgressHandler) async throws -> T) async -> T? {
         let cancellation = CancellationToken()
         let panel = ProgressWindowController(title: title, cancellation: cancellation)
+        if !cancellable { panel.hideCancel() }
+        beginOperation()
         if let window = view.window {
             window.beginSheet(panel.window!, completionHandler: nil)
         } else {
@@ -479,6 +628,7 @@ extension ArchiveBrowserViewController {
                 window.endSheet(sheet)
             }
             panel.finish()
+            endOperation()
         }
 
         do {

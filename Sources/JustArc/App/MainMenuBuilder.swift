@@ -75,6 +75,14 @@ enum MainMenuBuilder {
 
     private static func editMenuItem() -> NSMenuItem {
         submenu("Edit") { menu in
+            // Without these the keyboard shortcuts do nothing anywhere in the app,
+            // the password field included, since AppKit routes them through the menu.
+            add(menu, "Undo", Selector(("undo:")), "z")
+            add(menu, "Redo", Selector(("redo:")), "Z", modifiers: [.command, .shift])
+            menu.addItem(.separator())
+            add(menu, "Cut", #selector(NSText.cut(_:)), "x")
+            add(menu, "Copy", #selector(NSText.copy(_:)), "c")
+            add(menu, "Paste", #selector(NSText.paste(_:)), "v")
             add(menu, "Select All", #selector(NSResponder.selectAll(_:)), "a")
             add(menu, "Invert Selection", #selector(ArchiveBrowserViewController.invertSelection(_:)), "i",
                 modifiers: [.command, .option])

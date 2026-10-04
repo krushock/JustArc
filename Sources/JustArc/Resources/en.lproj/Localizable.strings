@@ -11,6 +11,7 @@
 "%@ expands to more than this Mac has room for, so it was not opened." = "%@ expands to more than this Mac has room for, so it was not opened.";
 "%@ file" = "%@ file";
 "%@ has no mountable file systems." = "%@ has no mountable file systems.";
+"%@ has not been saved. Quit anyway?" = "%@ has not been saved. Quit anyway?";
 "%@ holds a single file. Choose one file, or save as TAR + %@ instead." = "%@ holds a single file. Choose one file, or save as TAR + %@ instead.";
 "%@ is a file in this archive, not a folder." = "%@ is a file in this archive, not a folder.";
 "%@ is empty." = "%@ is empty.";
@@ -24,6 +25,7 @@
 "%@ was not found after extraction." = "%@ was not found after extraction.";
 "%@ was not found." = "%@ was not found.";
 "%@ was not written." = "%@ was not written.";
+"%d archives have not been saved. Quit anyway?" = "%d archives have not been saved. Quit anyway?";
 "%d files opened from this archive were edited outside JustArc." = "%d files opened from this archive were edited outside JustArc.";
 "%d folders already exist in “%@”." = "%d folders already exist in “%@”.";
 "%d items already exist in “%@”." = "%d items already exist in “%@”.";
@@ -33,6 +35,7 @@
 "700 MB (CD)" = "700 MB (CD)";
 "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool." = "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool.";
 "A folder named “%@” already exists in “%@”." = "A folder named “%@” already exists in “%@”.";
+"A name cannot contain a slash." = "A name cannot contain a slash.";
 "AES-256 (strong)" = "AES-256 (strong)";
 "About JustArc" = "About JustArc";
 "Add" = "Add";
@@ -40,6 +43,7 @@
 "Add Files…" = "Add Files…";
 "Adding to %@" = "Adding to %@";
 "Always do this" = "Always do this";
+"Archive" = "Archive";
 "Archive Information" = "Archive Information";
 "Archive size: %@" = "Archive size: %@";
 "Archives" = "Archives";
@@ -60,6 +64,7 @@
 "Checking…" = "Checking…";
 "Choose" = "Choose";
 "Choose a name and format for the archive." = "Choose a name and format for the archive.";
+"Choose another name, or delete the other item first." = "Choose another name, or delete the other item first.";
 "Choose files or folders to add to %@ in %@." = "Choose files or folders to add to %@ in %@.";
 "Choose files or folders to add to %@." = "Choose files or folders to add to %@.";
 "Choose one or more archives to open." = "Choose one or more archives to open.";
@@ -78,9 +83,11 @@
 "Compression:" = "Compression:";
 "Compression: %@" = "Compression: %@";
 "Continue" = "Continue";
+"Copy" = "Copy";
 "Create a folder when the archive has loose files" = "Create a folder when the archive has loose files";
 "Creates:" = "Creates:";
 "Creating %@" = "Creating %@";
+"Cut" = "Cut";
 "Cyrillic (DOS 866)" = "Cyrillic (DOS 866)";
 "Cyrillic (Windows 1251)" = "Cyrillic (Windows 1251)";
 "Debian Package" = "Debian Package";
@@ -162,6 +169,7 @@
 "JustArc could not install the RAR tools." = "JustArc could not install the RAR tools.";
 "JustArc is missing its archive engine." = "JustArc is missing its archive engine.";
 "JustArc is running outside an app bundle, so it cannot be chosen here." = "JustArc is running outside an app bundle, so it cannot be chosen here.";
+"JustArc is still working. Quit anyway?" = "JustArc is still working. Quit anyway?";
 "Keep Both" = "Keep Both";
 "Keep Unchanged" = "Keep Unchanged";
 "Keep both" = "Keep both";
@@ -203,7 +211,9 @@
 "Packed" = "Packed";
 "Password" = "Password";
 "Password:" = "Password:";
+"Paste" = "Paste";
 "Quick Look" = "Quick Look";
+"Quit Anyway" = "Quit Anyway";
 "Quit JustArc" = "Quit JustArc";
 "Quit after extracting" = "Quit after extracting";
 "RAR" = "RAR";
@@ -213,7 +223,9 @@
 "RARLAB does not publish a build for this processor." = "RARLAB does not publish a build for this processor.";
 "Read Licence" = "Read Licence";
 "Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is installed in Application Support, not inside the app." = "Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is installed in Application Support, not inside the app.";
+"Reading the archive…" = "Reading the archive…";
 "Recent" = "Recent";
+"Redo" = "Redo";
 "Reload" = "Reload";
 "Remember" = "Remember";
 "Remove" = "Remove";
@@ -274,6 +286,7 @@
 "That split size was not understood." = "That split size was not understood.";
 "The archive contains an unsafe path and was not extracted: %@" = "The archive contains an unsafe path and was not extracted: %@";
 "The archive engine failed with code %d." = "The archive engine failed with code %d.";
+"The archive or the files being written now will be left incomplete." = "The archive or the files being written now will be left incomplete.";
 "The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder." = "The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder.";
 "The bundled archive engine is missing at %@." = "The bundled archive engine is missing at %@.";
 "The disk image has no mountable file systems." = "The disk image has no mountable file systems.";
@@ -286,6 +299,7 @@
 "The file was too small to be the RAR tools." = "The file was too small to be the RAR tools.";
 "The files you added have not been written to an archive yet." = "The files you added have not been written to an archive yet.";
 "The folders it contains were left as they were." = "The folders it contains were left as they were.";
+"The name was given the extension that matches the chosen format." = "The name was given the extension that matches the chosen format.";
 "The operation was cancelled." = "The operation was cancelled.";
 "The password is incorrect." = "The password is incorrect.";
 "The server refused the request." = "The server refused the request.";
@@ -303,6 +317,7 @@
 "Traditional Chinese (Big5)" = "Traditional Chinese (Big5)";
 "Type" = "Type";
 "Ultra" = "Ultra";
+"Undo" = "Undo";
 "Unicode (UTF-8)" = "Unicode (UTF-8)";
 "Unix Archive" = "Unix Archive";
 "Unknown" = "Unknown";
@@ -337,3 +352,6 @@
 "macOS asks you to confirm each change. Disk images and ISO files keep the app they have now." = "macOS asks you to confirm each change. Disk images and ISO files keep the app they have now.";
 "macOS did not change the default app." = "macOS did not change the default app.";
 "the cloud" = "the cloud";
+"this format" = "this format";
+"“%@” already exists. Do you want to replace it?" = "“%@” already exists. Do you want to replace it?";
+"“%@” cannot be used as a name." = "“%@” cannot be used as a name.";

@@ -11,6 +11,7 @@
 "%@ expands to more than this Mac has room for, so it was not opened." = "Архив %@ при распаковке занимает больше места, чем есть на этом Mac, поэтому он не был открыт.";
 "%@ file" = "Файл %@";
 "%@ has no mountable file systems." = "В образе %@ нет монтируемых файловых систем.";
+"%@ has not been saved. Quit anyway?" = "Архив %@ не сохранён. Всё равно завершить?";
 "%@ holds a single file. Choose one file, or save as TAR + %@ instead." = "Формат %@ вмещает только один файл. Выберите один файл или сохраните как TAR + %@.";
 "%@ is a file in this archive, not a folder." = "«%@» в этом архиве — файл, а не папка.";
 "%@ is empty." = "Архив %@ пуст.";
@@ -24,6 +25,7 @@
 "%@ was not found after extraction." = "Файл %@ не найден после распаковки.";
 "%@ was not found." = "%@ не найден.";
 "%@ was not written." = "Не удалось записать %@.";
+"%d archives have not been saved. Quit anyway?" = "Несохранённых архивов: %d. Всё равно завершить?";
 "%d files opened from this archive were edited outside JustArc." = "Файлов из этого архива изменено вне JustArc: %d.";
 "%d folders already exist in “%@”." = "В папке «%2$@» уже есть папок: %1$d.";
 "%d items already exist in “%@”." = "В папке «%2$@» уже есть объектов: %1$d.";
@@ -33,6 +35,7 @@
 "700 MB (CD)" = "700 МБ (CD)";
 "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool." = "Быстрый архиватор для macOS.\n\nСжатие работает на 7-Zip %@ по лицензии GNU LGPL. Образы дисков используют системную утилиту hdiutil.";
 "A folder named “%@” already exists in “%@”." = "Папка «%@» уже есть в «%@».";
+"A name cannot contain a slash." = "Имя не может содержать косую черту.";
 "AES-256 (strong)" = "AES-256 (надёжное)";
 "About JustArc" = "О программе JustArc";
 "Add" = "Добавить";
@@ -40,6 +43,7 @@
 "Add Files…" = "Добавить файлы…";
 "Adding to %@" = "Добавление в %@";
 "Always do this" = "Всегда поступать так";
+"Archive" = "Архив";
 "Archive Information" = "Сведения об архиве";
 "Archive size: %@" = "Размер архива: %@";
 "Archives" = "Архивы";
@@ -60,6 +64,7 @@
 "Checking…" = "Проверка…";
 "Choose" = "Выбрать";
 "Choose a name and format for the archive." = "Выберите имя и формат архива.";
+"Choose another name, or delete the other item first." = "Выберите другое имя или сначала удалите другой объект.";
 "Choose files or folders to add to %@ in %@." = "Выберите файлы или папки, чтобы добавить их в папку «%@» архива %@.";
 "Choose files or folders to add to %@." = "Выберите файлы или папки для добавления в %@.";
 "Choose one or more archives to open." = "Выберите один или несколько архивов.";
@@ -78,9 +83,11 @@
 "Compression:" = "Сжатие:";
 "Compression: %@" = "Сжатие: %@";
 "Continue" = "Продолжить";
+"Copy" = "Скопировать";
 "Create a folder when the archive has loose files" = "Создавать папку, если в архиве отдельные файлы";
 "Creates:" = "Создаёт:";
 "Creating %@" = "Создание %@";
+"Cut" = "Вырезать";
 "Cyrillic (DOS 866)" = "Кириллица (DOS 866)";
 "Cyrillic (Windows 1251)" = "Кириллица (Windows 1251)";
 "Debian Package" = "Пакет Debian";
@@ -162,6 +169,7 @@
 "JustArc could not install the RAR tools." = "JustArc не удалось установить утилиты RAR.";
 "JustArc is missing its archive engine." = "Отсутствует архивный движок JustArc.";
 "JustArc is running outside an app bundle, so it cannot be chosen here." = "JustArc запущен не из пакета приложения, поэтому выбрать его здесь нельзя.";
+"JustArc is still working. Quit anyway?" = "JustArc ещё работает. Всё равно завершить?";
 "Keep Both" = "Оставить оба";
 "Keep Unchanged" = "Оставить как есть";
 "Keep both" = "Оставлять оба";
@@ -203,7 +211,9 @@
 "Packed" = "Упаковано";
 "Password" = "Пароль";
 "Password:" = "Пароль:";
+"Paste" = "Вставить";
 "Quick Look" = "Быстрый просмотр";
+"Quit Anyway" = "Завершить";
 "Quit JustArc" = "Завершить JustArc";
 "Quit after extracting" = "Завершать работу после распаковки";
 "RAR" = "RAR";
@@ -213,7 +223,9 @@
 "RARLAB does not publish a build for this processor." = "RARLAB не выпускает сборку для этого процессора.";
 "Read Licence" = "Прочитать лицензию";
 "Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is installed in Application Support, not inside the app." = "Чтение RAR работает всегда. Для записи нужна утилита RARLAB, которую JustArc не может включить в состав программы. Загрузка идёт с rarlab.com, это пробная версия по лицензии RARLAB, а не JustArc. Она устанавливается в Application Support, а не внутрь программы.";
+"Reading the archive…" = "Чтение архива…";
 "Recent" = "Недавние";
+"Redo" = "Повторить";
 "Reload" = "Обновить";
 "Remember" = "Запомнить";
 "Remove" = "Удалить";
@@ -274,6 +286,7 @@
 "That split size was not understood." = "Не удалось разобрать размер тома.";
 "The archive contains an unsafe path and was not extracted: %@" = "Архив содержит небезопасный путь и не был распакован: %@";
 "The archive engine failed with code %d." = "Архивный движок завершился с кодом %d.";
+"The archive or the files being written now will be left incomplete." = "Архив или файлы, которые сейчас записываются, останутся незавершёнными.";
 "The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder." = "Не удалось загрузить встроенную библиотеку 7-Zip из Contents/Frameworks. Переустановите JustArc или задайте переменную JUSTARC_7Z_LIBRARY с путём к 7z.so при запуске из папки сборки.";
 "The bundled archive engine is missing at %@." = "Встроенный архивный движок отсутствует: %@.";
 "The disk image has no mountable file systems." = "В образе диска нет монтируемых файловых систем.";
@@ -286,6 +299,7 @@
 "The file was too small to be the RAR tools." = "Файл слишком мал, чтобы быть утилитами RAR.";
 "The files you added have not been written to an archive yet." = "Добавленные файлы ещё не записаны в архив.";
 "The folders it contains were left as they were." = "Папки внутри остались без изменений.";
+"The name was given the extension that matches the chosen format." = "К имени добавлено расширение, соответствующее выбранному формату.";
 "The operation was cancelled." = "Операция отменена.";
 "The password is incorrect." = "Неверный пароль.";
 "The server refused the request." = "Сервер отклонил запрос.";
@@ -303,6 +317,7 @@
 "Traditional Chinese (Big5)" = "Традиционная китайская (Big5)";
 "Type" = "Тип";
 "Ultra" = "Ультра";
+"Undo" = "Отменить";
 "Unicode (UTF-8)" = "Юникод (UTF-8)";
 "Unix Archive" = "Архив Unix";
 "Unknown" = "Неизвестно";
@@ -337,3 +352,6 @@
 "macOS asks you to confirm each change. Disk images and ISO files keep the app they have now." = "macOS попросит подтвердить каждое изменение. Образы дисков и ISO останутся за текущим приложением.";
 "macOS did not change the default app." = "macOS не изменила приложение по умолчанию.";
 "the cloud" = "облаке";
+"this format" = "этот формат";
+"“%@” already exists. Do you want to replace it?" = "«%@» уже существует. Заменить?";
+"“%@” cannot be used as a name." = "Имя «%@» использовать нельзя.";

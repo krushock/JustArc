@@ -115,6 +115,10 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
         browser.onOpenArchives = { urls in
             for url in urls { (NSApp.delegate as? AppDelegate)?.openInBrowser(url) }
         }
+        browser.onLoadFailed = { [weak self] in
+            guard let self else { return }
+            (NSApp.delegate as? AppDelegate)?.archiveFailedToOpen(self)
+        }
         browser.onFocusFilter = { [weak self] in
             self?.searchItem?.beginSearchInteraction()
         }
@@ -138,6 +142,9 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
     var isPristine: Bool {
         session.isUntitled && !session.hasUnsavedChanges
     }
+
+    /// True while the window is reading, writing or extracting.
+    var isBusy: Bool { browser.isBusy }
 
     func loadArchive() { browser.loadArchive() }
     func reloadFromSession() { browser.reloadFromSession() }
@@ -180,6 +187,12 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // Closing would not stop the work, only hide it, and leave it half done
+        // if the app then quit.
+        if browser.isBusy {
+            NSSound.beep()
+            return false
+        }
         guard session.hasUnsavedChanges else { return true }
         let alert = NSAlert()
         alert.messageText = L("Save changes to %@?", session.displayName)
@@ -189,8 +202,12 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
         alert.addButton(withTitle: L("Cancel"))
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            browser.saveArchiveAs(nil)
-            return !session.hasUnsavedChanges
+            // The save runs after this returns, so the window is closed when it has
+            // finished rather than being judged now, before it has started.
+            browser.runSaveAs { [weak self] saved in
+                if saved { self?.window?.close() }
+            }
+            return false
         case .alertSecondButtonReturn:
             return true
         default:
@@ -199,8 +216,10 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
     }
 
     func windowWillClose(_ notification: Notification) {
-        // Detaches the disk image, if this window had one mounted.
-        session.close()
+        // Detaches the disk image, if this window had one mounted. That can take a
+        // moment, so it is not done on the thread the window is closing on.
+        let session = self.session
+        DispatchQueue.global(qos: .utility).async { session.close() }
         onClose?()
     }
 }

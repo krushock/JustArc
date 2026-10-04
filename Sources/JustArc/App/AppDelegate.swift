@@ -21,8 +21,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: - Lifecycle
 
+    /// Where every window keeps the files it has opened or previewed out of an archive.
+    private static let scratchRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("JustArc", isDirectory: true)
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         Preferences.registerDefaults()
+        // Anything here was left by a run that did not get to tidy up.
+        try? FileManager.default.removeItem(at: Self.scratchRoot)
         Diagnostics.log("launch: ui language \(Bundle.main.preferredLocalizations.first ?? "?"), "
                         + "\"Extract To\" reads as \"\(L("Extract To"))\"")
         recentMenu.open = { [weak self] url in self?.openInBrowser(url) }
@@ -95,9 +101,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .ask:
             // Asked on the next turn of the run loop, so the open event that brought
             // the archives is answered first rather than held up by a dialog.
+            // Counted as work in hand, so that an extraction finishing meanwhile does
+            // not quit the app from under the question.
+            backgroundJobs += 1
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if let choice = self.askWhatToDo(with: archives) {
+                let choice = self.askWhatToDo(with: archives)
+                self.backgroundJobs = max(self.backgroundJobs - 1, 0)
+                if let choice {
                     self.perform(choice, on: archives)
                 } else {
                     self.terminateIfNothingLeftToShow()
@@ -134,6 +145,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationWillTerminate(_ notification: Notification) {
         // Leaving a disk image attached after quitting would strand it in Finder.
         EngineFactory.releaseAll()
+        // Files opened out of archives, some of them decrypted, do not outlive the app.
+        try? FileManager.default.removeItem(at: Self.scratchRoot)
+    }
+
+    /// Quitting asks first when it would lose something: an archive that was never
+    /// saved, or work that is only half done.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let working = quickExtract.hasActiveJobs || backgroundJobs > 0
+            || browserControllers.contains(where: \.isBusy)
+        let unsaved = browserControllers.filter { $0.session.hasUnsavedChanges }
+        guard working || !unsaved.isEmpty else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        if working {
+            alert.messageText = L("JustArc is still working. Quit anyway?")
+            alert.informativeText = L("The archive or the files being written now will be left incomplete.")
+        } else if unsaved.count == 1 {
+            alert.messageText = L("%@ has not been saved. Quit anyway?", unsaved[0].session.displayName)
+            alert.informativeText = L("The files you added have not been written to an archive yet.")
+        } else {
+            alert.messageText = L("%d archives have not been saved. Quit anyway?", unsaved.count)
+            alert.informativeText = L("The files you added have not been written to an archive yet.")
+        }
+        alert.addButton(withTitle: L("Cancel"))
+        alert.addButton(withTitle: L("Quit Anyway"))
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -216,6 +254,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // the window was checked to be untouched before it was chosen.
         previous?.window?.close()
         return controller
+    }
+
+    /// An archive that could not be read at all leaves its window with nothing to
+    /// show. With other windows open it simply closes; as the only one it gives way
+    /// to an empty window, because closing the last window is also what ends the app
+    /// after a double-click, and a failed File ▸ Open should not do that.
+    func archiveFailedToOpen(_ controller: ArchiveWindowController) {
+        if browserControllers.count <= 1 {
+            makeBrowserWindow(for: nil, replacing: controller)
+        } else {
+            controller.window?.close()
+        }
     }
 
     func openInBrowser(_ archive: URL) {

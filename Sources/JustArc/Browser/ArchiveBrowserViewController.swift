@@ -29,6 +29,28 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     private var filterText = ""
     private var previewItems: [URL] = []
 
+    /// How many operations are running. While one is, nothing else that reads or
+    /// changes the archive may start: two rewrites at once each begin from the old
+    /// file, and the one that finishes last silently undoes the other.
+    private var runningOperations = 0
+    var isBusy: Bool { runningOperations > 0 }
+    func beginOperation() { runningOperations += 1 }
+    func endOperation() { runningOperations = max(runningOperations - 1, 0) }
+
+    /// True from the first successful read of the archive. A failure before that
+    /// leaves nothing to show; a failure after it leaves the window as it was.
+    private(set) var hasLoadedOnce = false
+    private var isLoading = false
+    /// Counts reloads, so a file extracted for viewing is not served again after
+    /// the archive has changed underneath it.
+    private(set) var listingGeneration = 0
+    /// A password to put in the keychain once it has been seen to work.
+    var passwordToRemember: String?
+    /// Set while the "edited outside JustArc" question is on screen.
+    var isOfferingUpdate = false
+    private var previewRequest = 0
+    private var promiseChain: Task<Void, Never>?
+
     /// Watches files opened out of the archive so edits can be written back.
     let editedFiles = EditedFileWatcher()
     var currentPreviewItems: [URL] { previewItems }
@@ -49,6 +71,8 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     /// Which archive this window shows, so the sidebar can mark it.
     var onArchiveChange: ((URL?) -> Void)?
     var onToggleSidebar: (() -> Void)?
+    /// The archive could not be read at all, so this window has nothing to show.
+    var onLoadFailed: (() -> Void)?
     /// Archives dropped on an empty window, which are opened rather than added.
     var onOpenArchives: (([URL]) -> Void)?
     var onFocusFilter: (() -> Void)?
@@ -182,7 +206,9 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         let isEmpty = table.numberOfRows == 0
         emptyLabel.isHidden = !isEmpty
         guard isEmpty else { return }
-        if listSource.isFiltering {
+        if isLoading && !hasLoadedOnce {
+            emptyLabel.stringValue = L("Reading the archive…")
+        } else if listSource.isFiltering {
             emptyLabel.stringValue = L("No Matches")
         } else if session.isUntitled {
             emptyLabel.stringValue = L("Drop files here to start an archive")
@@ -202,7 +228,10 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             return listSource.node(for: table.item(atRow: row)) != nil
         }
 
-        listSource.onSelectionChange = { [weak self] in self?.refreshStatusBar() }
+        listSource.onSelectionChange = { [weak self] in
+            self?.refreshStatusBar()
+            self?.refreshQuickLookIfShowing()
+        }
         listSource.onSortChange = { [weak self] column, ascending in
             self?.listSource.sortColumn = column
             self?.listSource.sortAscending = ascending
@@ -226,41 +255,81 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             reloadList()
             return
         }
+        // A second read started while one is running would race it for the listing.
+        guard !isLoading else { return }
         Task { await performLoad() }
     }
 
     private func performLoad() async {
-        if session.password == nil, let url = session.archiveURL {
-            session.password = KeychainStore.password(for: url)
+        guard let url = session.archiveURL else { return }
+        isLoading = true
+        updateEmptyState()
+        defer {
+            isLoading = false
+            updateEmptyState()
         }
+
+        let previousPassword = session.password
         var attempt = 0
+        var triedKeychain = false
+        var usingKeychainPassword = false
         while true {
             do {
                 try await loadWithDownloadPanel()
-                if let url = session.archiveURL { RecentsRecorder.note(url) }
+                hasLoadedOnce = true
+                listingGeneration += 1
+                discardViewingCopies(before: listingGeneration)
+                // Reading a listing only proves a password when the names themselves
+                // are encrypted; otherwise it is proven by the first file that decodes.
+                if session.listing.info.hasEncryptedHeader { rememberPasswordIfProven() }
+                RecentsRecorder.note(url)
                 onArchiveChange?(session.archiveURL)
                 reloadList()
                 refreshChrome()
                 return
             } catch let error as ArchiveError where error.isPasswordProblem {
-                guard let name = session.archiveURL?.lastPathComponent,
-                      let response = PasswordPrompt.ask(archiveName: name,
+                // A remembered password is tried once before anyone is asked, and
+                // forgotten if it no longer opens the archive at this path.
+                if !triedKeychain {
+                    triedKeychain = true
+                    if let stored = KeychainStore.password(for: url), stored != session.password {
+                        session.password = stored
+                        usingKeychainPassword = true
+                        continue
+                    }
+                }
+                if usingKeychainPassword {
+                    KeychainStore.remove(for: url)
+                    usingKeychainPassword = false
+                }
+                guard let response = PasswordPrompt.ask(archiveName: url.lastPathComponent,
                                                         window: view.window,
                                                         retry: attempt > 0) else {
-                    view.window?.close()
+                    session.password = previousPassword
+                    passwordToRemember = nil
+                    if !hasLoadedOnce { onLoadFailed?() }
                     return
                 }
                 session.password = response.password
-                if response.rememberInKeychain, let url = session.archiveURL {
-                    KeychainStore.save(password: response.password, for: url)
-                }
+                passwordToRemember = response.rememberInKeychain ? response.password : nil
                 attempt += 1
+            } catch let error as ArchiveError where error == .cancelled {
+                if !hasLoadedOnce { onLoadFailed?() }
+                return
             } catch {
                 present(error)
-                view.window?.close()
+                if !hasLoadedOnce { onLoadFailed?() }
                 return
             }
         }
+    }
+
+    /// Saves the password the user asked to have remembered, now that it has worked.
+    func rememberPasswordIfProven() {
+        guard let password = passwordToRemember, password == session.password,
+              let url = session.archiveURL else { return }
+        KeychainStore.save(password: password, for: url)
+        passwordToRemember = nil
     }
 
     /// Loading can start with a download when the archive lives in a cloud folder,
@@ -282,7 +351,12 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             if let window = view.window, let sheet = panel.window { window.endSheet(sheet) }
             panel.finish()
         }
-        try await session.load(cancellation: cancellation)
+        do {
+            try await session.load(cancellation: cancellation)
+        } catch {
+            if cancellation.isCancelled { throw ArchiveError.cancelled }
+            throw error
+        }
     }
 
     func reloadFromSession() {
@@ -385,8 +459,18 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
 
     // MARK: - Selection
 
+    /// The rows a command applies to. A right-click on a row outside the selection
+    /// means that row alone, as it does in the Finder; `clickedRow` is only set while
+    /// the contextual menu it opened is being used.
+    private var commandRows: IndexSet {
+        let selected = table.selectedRowIndexes
+        let clicked = table.clickedRow
+        if clicked >= 0, !selected.contains(clicked) { return IndexSet(integer: clicked) }
+        return selected
+    }
+
     func selectedNodesForCommand() -> [EntryTree.Node] {
-        table.selectedRowIndexes.compactMap { listSource.node(for: table.item(atRow: $0)) }
+        commandRows.compactMap { listSource.node(for: table.item(atRow: $0)) }
     }
 
     func selectedEntriesForCommand() -> [ArchiveEntry] {
@@ -434,6 +518,19 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     /// One place deciding whether a command applies, so the toolbar and the menus
     /// never disagree about what is available.
     func canPerform(_ action: Selector?) -> Bool {
+        // While an operation is running the list can still be looked through, but
+        // nothing that reads from or writes to the archive may start.
+        if isBusy || isLoading {
+            switch action {
+            case #selector(goBack(_:)), #selector(goForward(_:)), #selector(goUp(_:)),
+                 #selector(toggleFolderTree(_:)), #selector(focusFilterField(_:)),
+                 #selector(invertSelection(_:)), #selector(revealArchiveInFinder(_:)),
+                 #selector(showArchiveInfo(_:)):
+                break
+            default:
+                return false
+            }
+        }
         switch action {
         case #selector(addFiles(_:)):
             return session.canModifyContents
@@ -472,6 +569,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             let current = session.encodingCodePage ?? 0
             menuItem.state = menuItem.tag == current ? .on : .off
             return ArchiveTextEncoding.isOverridable(session.format) && !session.isUntitled
+                && !isBusy && !isLoading
         }
         if menuItem.action == #selector(toggleFolderTree(_:)) {
             menuItem.title = Preferences.showSidebar ? L("Hide Sidebar") : L("Show Sidebar")
@@ -504,7 +602,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     }
 
     func canAcceptDrop(of urls: [URL]) -> Bool {
-        guard !urls.isEmpty else { return false }
+        guard !urls.isEmpty, !isBusy, !isLoading else { return false }
         return isRequestToOpen(urls) || session.canModifyContents
     }
 
@@ -531,8 +629,62 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     /// Root of this window's scratch space, where opened and previewed files land.
     func scratchRoot() -> URL { scratchDirectory }
 
-    func scratchURL(for entry: ArchiveEntry) -> URL {
-        scratchDirectory.appendingPathComponent(entry.path)
+    /// Where files opened for editing live. They stay put while the archive changes
+    /// around them, because another app may have them open.
+    func editingRoot() -> URL { scratchDirectory.appendingPathComponent("open") }
+
+    /// Where files extracted only to be looked at live: Quick Look, dragging out,
+    /// opening from an archive that cannot be changed. One folder per reload, so a
+    /// copy made before the archive changed is never mistaken for what is in it now.
+    func viewingRoot() -> URL { scratchDirectory.appendingPathComponent("view-\(listingGeneration)") }
+
+    private func discardViewingCopies(before generation: Int) {
+        let root = scratchDirectory
+        DispatchQueue.global(qos: .utility).async {
+            let stale = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+            for name in stale where name.hasPrefix("view-") && name != "view-\(generation)" {
+                try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
+            }
+        }
+    }
+
+    /// Runs promise fulfilments one after another. The Finder asks for every dragged
+    /// item at once, and for a solid archive each request decodes from the start.
+    func enqueuePromise(_ work: @escaping @MainActor () async -> Void) {
+        let previous = promiseChain
+        promiseChain = Task { @MainActor in
+            await previous?.value
+            await work()
+        }
+    }
+
+    // MARK: - Quick Look contents
+
+    /// Fills the Quick Look panel from the selection.
+    func loadPreviewItems(showing panel: QLPreviewPanel, thenOpen: Bool) {
+        let nodes = selectedNodesForCommand().filter { !$0.isDirectory }
+        guard !nodes.isEmpty else { return }
+        previewRequest += 1
+        let request = previewRequest
+        Task {
+            var urls: [URL] = []
+            for node in nodes.prefix(20) {
+                if let url = await materialize(node: node, quiet: true) { urls.append(url) }
+                // The selection moved on while this was extracting.
+                guard request == previewRequest else { return }
+            }
+            guard !urls.isEmpty else { return }
+            setPreviewItems(urls)
+            if thenOpen { panel.makeKeyAndOrderFront(nil) }
+            panel.reloadData()
+        }
+    }
+
+    /// Keeps an open Quick Look panel on whatever is selected, as the Finder's does.
+    private func refreshQuickLookIfShowing() {
+        guard QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(),
+              panel.isVisible, (panel.dataSource as AnyObject?) === self, !isBusy else { return }
+        loadPreviewItems(showing: panel, thenOpen: false)
     }
 
     func setPreviewItems(_ urls: [URL]) {
@@ -573,21 +725,23 @@ extension ArchiveBrowserViewController: NSFilePromiseProviderDelegate {
             return
         }
         Task { @MainActor in
-            let produced = node.isDirectory
-                ? await self.materializeFolder(node: node)
-                : await self.materialize(node: node, quiet: true)
-            guard let source = produced else {
-                completionHandler(ArchiveError.ioFailure(L("%@ could not be extracted.", node.name)))
-                return
-            }
-            do {
-                if FileManager.default.fileExists(atPath: url.path) {
-                    try FileManager.default.removeItem(at: url)
+            self.enqueuePromise {
+                let produced = node.isDirectory
+                    ? await self.materializeFolder(node: node)
+                    : await self.materialize(node: node, quiet: true, askingForPassword: false)
+                guard let source = produced else {
+                    completionHandler(ArchiveError.ioFailure(L("%@ could not be extracted.", node.name)))
+                    return
                 }
-                try FileManager.default.copyItem(at: source, to: url)
-                completionHandler(nil)
-            } catch {
-                completionHandler(error)
+                do {
+                    if FileManager.default.fileExists(atPath: url.path) {
+                        try FileManager.default.removeItem(at: url)
+                    }
+                    try FileManager.default.copyItem(at: source, to: url)
+                    completionHandler(nil)
+                } catch {
+                    completionHandler(error)
+                }
             }
         }
     }

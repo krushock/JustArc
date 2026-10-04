@@ -178,8 +178,9 @@ final class ExtractionSafetyTests: XCTestCase {
                                      overwrite: .overwrite, flattenPaths: false)
             XCTFail("a path longer than the system allows cannot have been created")
         } catch is ArchiveError {
-            // Refused cleanly, which is all that is asked.
+            // Refused cleanly, and before a chain of folders was started.
         }
+        XCTAssertTrue(everything(under: root.appendingPathComponent("deep-out")).isEmpty)
     }
 
     func testSetuidBitsAreNotRestoredAndAModeOfZeroIsIgnored() async throws {

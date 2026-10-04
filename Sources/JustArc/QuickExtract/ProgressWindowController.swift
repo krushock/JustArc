@@ -24,7 +24,7 @@ final class ProgressWindowController: NSWindowController {
         self.cancellation = cancellation
 
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 190),
-                              styleMask: [.titled, .closable],
+                              styleMask: [.titled],
                               backing: .buffered,
                               defer: false)
         window.title = "JustArc"
@@ -139,6 +139,12 @@ final class ProgressWindowController: NSWindowController {
         if let file = progress.currentFile {
             fileLabel.stringValue = file
         }
+    }
+
+    /// For work that cannot be interrupted partway, where a Cancel button that did
+    /// nothing until the end would only mislead.
+    func hideCancel() {
+        cancelButton.isHidden = true
     }
 
     func setTitle(_ text: String) {

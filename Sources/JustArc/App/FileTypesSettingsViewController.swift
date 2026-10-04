@@ -118,26 +118,37 @@ final class FileTypesSettingsViewController: SettingsPaneViewController,
     }
 
     private func fill(_ popUp: NSPopUpButton, for type: UTType) {
-        popUp.removeAllItems()
+        // Items are added to the menu directly: NSPopUpButton's own addItem(withTitle:)
+        // removes any item that already has that title, and two copies of one app,
+        // which is exactly what a build folder beside /Applications gives, share one.
+        let menu = NSMenu()
+        menu.autoenablesItems = false
         let current = FileAssociations.defaultApp(for: type)
         let apps = FileAssociations.candidates(for: type)
+        let names = apps.map(FileAssociations.displayName(of:))
 
         if current == nil {
-            popUp.addItem(withTitle: L("No app"))
-            popUp.lastItem?.isEnabled = false
+            let none = NSMenuItem(title: L("No app"), action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
         }
-        for app in apps {
-            popUp.addItem(withTitle: FileAssociations.displayName(of: app))
-            popUp.lastItem?.image = FileAssociations.icon(of: app)
-            popUp.lastItem?.representedObject = app
-            // Two copies of an app read the same; the path tells them apart.
-            popUp.lastItem?.toolTip = app.path
+        for (app, name) in zip(apps, names) {
+            // Told apart by their folder when the name alone does not.
+            let title = names.filter { $0 == name }.count > 1
+                ? "\(name) — \(app.deletingLastPathComponent().lastPathComponent)"
+                : name
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.image = FileAssociations.icon(of: app)
+            item.representedObject = app
+            item.toolTip = app.path
+            menu.addItem(item)
         }
-        popUp.menu?.addItem(.separator())
-        popUp.addItem(withTitle: L("Other…"))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: L("Other…"), action: nil, keyEquivalent: ""))
+        popUp.menu = menu
 
-        if let current, let index = apps.firstIndex(of: current) {
-            popUp.selectItem(at: index)
+        if let current, let item = menu.items.first(where: { ($0.representedObject as? URL) == current }) {
+            popUp.select(item)
         } else {
             popUp.selectItem(at: 0)
         }
@@ -158,7 +169,11 @@ final class FileTypesSettingsViewController: SettingsPaneViewController,
                 return
             }
         }
-        guard let app = chosen, app != FileAssociations.defaultApp(for: type) else { return }
+        guard let app = chosen, app != FileAssociations.defaultApp(for: type) else {
+            // Nothing to change; put the menu back on the app that is the default.
+            fill(sender, for: type)
+            return
+        }
         apply([(type, app)])
     }
 
