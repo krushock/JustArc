@@ -22,6 +22,8 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     private let listSource = ArchiveListDataSource()
 
     private var currentPath = ""
+    /// The folder inside the archive that the list is showing, "" at the top.
+    var currentFolderPath: String { currentPath }
     private var history: [String] = [""]
     private var historyIndex = 0
     private var filterText = ""
@@ -73,7 +75,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         // the empty-window message or the status bar.
         let dropView = FileDropView(frame: NSRect(x: 0, y: 0, width: 760, height: 620))
         dropView.canAccept = { [weak self] urls in self?.canAcceptDrop(of: urls) ?? false }
-        dropView.onDrop = { [weak self] urls in self?.handleDrop(of: urls) ?? false }
+        dropView.onDrop = { [weak self] urls in self?.handleDrop(of: urls, into: nil) ?? false }
         view = dropView
         buildTable()
         assemble()
@@ -206,7 +208,9 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             self?.listSource.sortAscending = ascending
             self?.reloadList()
         }
-        listSource.onDropFiles = { [weak self] urls in self?.handleDrop(of: urls) ?? false }
+        listSource.onDropFiles = { [weak self] urls, folder in
+            self?.handleDrop(of: urls, into: folder) ?? false
+        }
         listSource.canDropFiles = { [weak self] urls in self?.canAcceptDrop(of: urls) ?? false }
         listSource.promiseProvider = { [weak self] entry in self?.makePromise(for: entry) }
 
@@ -500,15 +504,17 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         return isRequestToOpen(urls) || session.canModifyContents
     }
 
+    /// - Parameter folder: the folder row the files were dropped on, or nil when they
+    ///   were dropped on the list as a whole and go where the list is.
     @discardableResult
-    func handleDrop(of urls: [URL]) -> Bool {
+    func handleDrop(of urls: [URL], into folder: String?) -> Bool {
         guard canAcceptDrop(of: urls) else { return false }
         if isRequestToOpen(urls), let onOpenArchives {
             // After the drop has finished, since opening replaces this very window.
             DispatchQueue.main.async { onOpenArchives(urls) }
             return true
         }
-        add(items: urls)
+        add(items: urls, into: folder)
         return true
     }
 

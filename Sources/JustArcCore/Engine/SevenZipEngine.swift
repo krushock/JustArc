@@ -96,6 +96,16 @@ public struct SevenZipEngine: ArchiveEngine {
                        options: CompressionOptions,
                        cancellation: CancellationToken? = nil,
                        progress: ProgressHandler? = nil) async throws {
+        try await create(archive: archive, items: items, folder: "", options: options,
+                         cancellation: cancellation, progress: progress)
+    }
+
+    private func create(archive: URL,
+                        items: [URL],
+                        folder: String,
+                        options: CompressionOptions,
+                        cancellation: CancellationToken?,
+                        progress: ProgressHandler?) async throws {
         guard let format = options.format, format.canWrite else {
             throw ArchiveError.notWritable(options.formatKey)
         }
@@ -104,7 +114,7 @@ public struct SevenZipEngine: ArchiveEngine {
 
         try await Self.blocking {
             let whole = BridgeProgress(handler: progress, cancellation: cancellation)
-            let added = try Self.collect(items, excludeMacMetadata: options.excludeMacMetadata)
+            let added = try Self.collect(items, into: folder, excludeMacMetadata: options.excludeMacMetadata)
             let scratch = try Scratch(beside: archive)
             defer { scratch.remove() }
 
@@ -154,18 +164,23 @@ public struct SevenZipEngine: ArchiveEngine {
     /// archive when it does not exist yet.
     public func add(items: [URL],
                     to archive: URL,
+                    into folder: String,
                     options: CompressionOptions,
                     cancellation: CancellationToken? = nil,
                     progress: ProgressHandler? = nil) async throws {
         guard !items.isEmpty else { return }
+        let folder = ArchivePath.normalize(folder)
+        guard folder.isEmpty || PathSafety.isSafe(entryPath: folder) else {
+            throw ArchiveError.unsafeEntry(folder)
+        }
         guard PathSafety.itemExists(at: archive) else {
-            try await create(archive: archive, items: items, options: options,
+            try await create(archive: archive, items: items, folder: folder, options: options,
                              cancellation: cancellation, progress: progress)
             return
         }
         try await rewrite(archive, password: options.password, options: options,
                           cancellation: cancellation, progress: progress) { bridge in
-            let added = try Self.collect(items, excludeMacMetadata: options.excludeMacMetadata)
+            let added = try Self.collect(items, into: folder, excludeMacMetadata: options.excludeMacMetadata)
             let replaced = Set(added.map(\.archivePath))
             let removed = bridge.indices().filter { replaced.contains($0.path) }.map(\.index)
             return Edit(removed: removed, renames: [], added: added)
@@ -322,13 +337,15 @@ public struct SevenZipEngine: ArchiveEngine {
         return kept.count == all.count ? nil : kept.map(\.index)
     }
 
-    /// Everything to store for `items`, folders expanded, each under its own name at
-    /// the archive root. Symbolic links are stored as links, never followed.
-    static func collect(_ items: [URL], excludeMacMetadata: Bool) throws -> [BridgeArchive.NewItem] {
+    /// Everything to store for `items`, folders expanded, each under its own name
+    /// inside `folder`, or at the archive root when that is empty. Symbolic links are
+    /// stored as links, never followed.
+    static func collect(_ items: [URL], into folder: String = "",
+                        excludeMacMetadata: Bool) throws -> [BridgeArchive.NewItem] {
         var result: [BridgeArchive.NewItem] = []
         for item in items {
-            let name = item.lastPathComponent
-            if excludeMacMetadata && isMacMetadata(name) { continue }
+            if excludeMacMetadata && isMacMetadata(item.lastPathComponent) { continue }
+            let name = ArchivePath.join(folder, item.lastPathComponent)
             guard PathSafety.itemExists(at: item) else {
                 throw ArchiveError.ioFailure(L("%@ was not found.", item.path))
             }

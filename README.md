@@ -37,8 +37,11 @@ or for everything at once. This is the same setting as Get Info â–¸ Open With â–
 All in the Finder, and macOS confirms each change with a dialog of its own.
 
 **Files go in and come out by dragging.** Files and folders dropped anywhere in a
-window are added to its archive; a window showing an archive that cannot be changed
-refuses the drop. Files and folders drag out of the list straight to the Finder.
+window are added to its archive, into the folder the list is showing; dropped on a
+folder's row, or among the rows of an expanded one, they go into that folder, as in
+the Finder. Add Files puts them in the folder being shown too. A window showing an
+archive that cannot be changed refuses the drop. Files and folders drag out of the
+list straight to the Finder.
 
 Folders expand in place with a disclosure triangle, the way Finder's list view works,
 and double-clicking one still navigates into it. An archive that wraps everything in a

@@ -12,6 +12,9 @@ public final class ArchiveSession {
 
     /// Top-level items the user added but has not written to an archive yet.
     public private(set) var stagedRoots: [URL] = []
+    /// The folder inside the archive each staged root goes into. Roots headed for
+    /// the archive's own root are not listed.
+    private var stagedFolders: [URL: String] = [:]
     private(set) var stagedEntries: [ArchiveEntry] = []
     private(set) var stagedSources: [String: URL] = [:]
 
@@ -108,21 +111,25 @@ public final class ArchiveSession {
 
     // MARK: - Editing
 
+    /// Stages files and folders to be written on the next save.
+    /// - Parameter folder: where they go inside the archive, "" being its root.
     @discardableResult
-    public func stage(items: [URL]) -> [ArchiveEntry] {
+    public func stage(items: [URL], into folder: String = "") -> [ArchiveEntry] {
+        let folder = ArchivePath.normalize(folder)
         var added: [ArchiveEntry] = []
         for item in items {
             let standardized = item.standardizedFileURL
             guard !stagedRoots.contains(standardized) else { continue }
             stagedRoots.append(standardized)
-            let produced = Self.enumerate(item: standardized)
+            if !folder.isEmpty { stagedFolders[standardized] = folder }
+            let produced = Self.enumerate(item: standardized).map { $0.moved(into: folder) }
             for entry in produced {
                 stagedEntries.removeAll { $0.path == entry.path }
                 stagedEntries.append(entry)
                 pendingDeletions.remove(entry.path)
             }
             for (path, url) in Self.sourceMap(for: standardized) {
-                stagedSources[path] = url
+                stagedSources[ArchivePath.join(folder, path)] = url
             }
             added.append(contentsOf: produced)
         }
@@ -130,12 +137,28 @@ public final class ArchiveSession {
         return added
     }
 
+    /// The folder a staged root is headed for, "" being the archive's root.
+    public func stagedFolder(for root: URL) -> String {
+        stagedFolders[root.standardizedFileURL] ?? ""
+    }
+
     public func unstage(root: URL) {
         let standardized = root.standardizedFileURL
+        guard stagedRoots.contains(standardized) else { return }
+        let folder = stagedFolder(for: standardized)
+        let archivePath = ArchivePath.join(folder, standardized.lastPathComponent)
+
         stagedRoots.removeAll { $0 == standardized }
-        let owned = Set(Self.sourceMap(for: standardized).keys)
+        stagedFolders[standardized] = nil
+        let owned = Set(Self.sourceMap(for: standardized).keys.map { ArchivePath.join(folder, $0) })
         stagedEntries.removeAll { owned.contains($0.path) }
         for path in owned { stagedSources.removeValue(forKey: path) }
+
+        // Anything staged into this folder has lost the place it was going to.
+        for (other, destination) in stagedFolders
+        where destination == archivePath || destination.hasPrefix(archivePath + "/") {
+            unstage(root: other)
+        }
         rebuild()
     }
 
@@ -154,6 +177,7 @@ public final class ArchiveSession {
 
     public func clearPendingChanges() {
         stagedRoots.removeAll()
+        stagedFolders.removeAll()
         stagedEntries.removeAll()
         stagedSources.removeAll()
         pendingDeletions.removeAll()
@@ -203,9 +227,23 @@ public final class ArchiveSession {
         if !stagedRoots.isEmpty {
             try await CloudFile.materializeAll(stagedRoots, cancellation: cancellation,
                                                progress: progress)
-            try await engine.add(items: stagedRoots, to: destination, options: options,
-                                 cancellation: cancellation, progress: progress)
+            for group in stagedGroups() {
+                try await engine.add(items: group.items, to: destination, into: group.folder,
+                                     options: options, cancellation: cancellation, progress: progress)
+            }
         }
+    }
+
+    /// Staged roots gathered by the folder they go into, the archive's root first.
+    private func stagedGroups() -> [(folder: String, items: [URL])] {
+        var order: [String] = []
+        var groups: [String: [URL]] = [:]
+        for root in stagedRoots {
+            let folder = stagedFolder(for: root)
+            if groups[folder] == nil { order.append(folder) }
+            groups[folder, default: []].append(root)
+        }
+        return order.sorted { $0.isEmpty && !$1.isEmpty }.map { ($0, groups[$0] ?? []) }
     }
 
     /// Extracts the current archive to a scratch folder, applies the pending edits there,
@@ -237,22 +275,60 @@ public final class ArchiveSession {
 
         // Staged files may come from a cloud folder and still be placeholders.
         try await CloudFile.materializeAll(stagedRoots, cancellation: cancellation, progress: progress)
-        roots.append(contentsOf: stagedRoots)
-        guard !roots.isEmpty else {
+        let groups = stagedGroups()
+        roots.append(contentsOf: groups.first { $0.folder.isEmpty }?.items ?? [])
+        var nested = groups.filter { !$0.folder.isEmpty }
+        guard !roots.isEmpty || !nested.isEmpty else {
             throw ArchiveError.ioFailure(L("There is nothing to save. Add files to the archive first."))
         }
 
         let temporaryArchive = scratch.deletingLastPathComponent()
             .appendingPathComponent("justarc-out-\(UUID().uuidString)-\(destination.lastPathComponent)")
         let destinationEngine = EngineFactory.engine(for: destination)
-        try await destinationEngine.create(archive: temporaryArchive, items: roots, options: options,
-                                           cancellation: cancellation, progress: progress)
+
+        // A disk image is built in one go from a folder and cannot be added to
+        // afterwards, so what goes into subfolders is laid out on disk first.
+        if !nested.isEmpty, FormatRegistry.format(for: destination)?.engine == .diskImage {
+            roots = try Self.layOut(roots: roots, nested: nested,
+                                    in: scratch.appendingPathComponent("layout-\(UUID().uuidString)"))
+            nested = []
+        }
+
+        if !roots.isEmpty {
+            try await destinationEngine.create(archive: temporaryArchive, items: roots, options: options,
+                                               cancellation: cancellation, progress: progress)
+        }
+        for group in nested {
+            try await destinationEngine.add(items: group.items, to: temporaryArchive, into: group.folder,
+                                            options: options, cancellation: cancellation, progress: progress)
+        }
 
         if FileManager.default.fileExists(atPath: destination.path) {
             _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporaryArchive)
         } else {
             try FileManager.default.moveItem(at: temporaryArchive, to: destination)
         }
+    }
+
+    /// Copies everything into one folder tree shaped like the archive, and returns
+    /// what is at its top. On APFS the copies are clones and take no space.
+    private static func layOut(roots: [URL], nested: [(folder: String, items: [URL])],
+                               in layout: URL) throws -> [URL] {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: layout, withIntermediateDirectories: true)
+        for root in roots {
+            try fileManager.copyItem(at: root, to: layout.appendingPathComponent(root.lastPathComponent))
+        }
+        for group in nested {
+            let folder = try PathSafety.resolvedURL(for: group.folder, in: layout)
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            for item in group.items {
+                let target = folder.appendingPathComponent(item.lastPathComponent)
+                if PathSafety.itemExists(at: target) { try fileManager.removeItem(at: target) }
+                try fileManager.copyItem(at: item, to: target)
+            }
+        }
+        return try fileManager.contentsOfDirectory(at: layout, includingPropertiesForKeys: nil)
     }
 
     // MARK: - Staging helpers

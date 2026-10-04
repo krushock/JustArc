@@ -54,6 +54,7 @@
 "Checking…" = "Проверка…";
 "Choose" = "Выбрать";
 "Choose a name and format for the archive." = "Выберите имя и формат архива.";
+"Choose files or folders to add to %@ in %@." = "Выберите файлы или папки, чтобы добавить их в папку «%@» архива %@.";
 "Choose files or folders to add to %@." = "Выберите файлы или папки для добавления в %@.";
 "Choose one or more archives to open." = "Выберите один или несколько архивов.";
 "Choose the app that opens each kind of archive when you double-click it in the Finder." = "Выберите приложение, которое открывает каждый тип архивов по двойному щелчку в Finder.";

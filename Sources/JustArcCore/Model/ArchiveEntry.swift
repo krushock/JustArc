@@ -52,6 +52,16 @@ public struct ArchiveEntry: Sendable, Hashable, Identifiable {
     }
 }
 
+extension ArchiveEntry {
+    /// The same entry placed inside `folder`. An empty folder leaves it where it is.
+    func moved(into folder: String) -> ArchiveEntry {
+        guard !folder.isEmpty else { return self }
+        return ArchiveEntry(path: ArchivePath.join(folder, path), isDirectory: isDirectory, size: size,
+                            packedSize: packedSize, modified: modified, crc: crc,
+                            attributes: attributes, isEncrypted: isEncrypted, method: method)
+    }
+}
+
 public enum ArchivePath {
     /// Collapses separators and strips leading "./" and "/" so paths are archive-relative.
     public static func normalize(_ raw: String) -> String {

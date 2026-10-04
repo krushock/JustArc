@@ -45,10 +45,14 @@ public struct RarEngine: ArchiveEngine {
                       cancellation: cancellation, progress: progress)
     }
 
-    public func add(items: [URL], to archive: URL, options: CompressionOptions,
+    public func add(items: [URL], to archive: URL, into folder: String, options: CompressionOptions,
                     cancellation: CancellationToken? = nil,
                     progress: ProgressHandler? = nil) async throws {
         guard !items.isEmpty else { return }
+        let folder = ArchivePath.normalize(folder)
+        guard folder.isEmpty || PathSafety.isSafe(entryPath: folder) else {
+            throw ArchiveError.unsafeEntry(folder)
+        }
         let tool = try Self.requireTool()
         let reporter = ProgressReporter(handler: progress)
 
@@ -60,7 +64,8 @@ public struct RarEngine: ArchiveEngine {
         }
 
         for (parent, names) in groups {
-            let arguments = Self.addArguments(archive: archive, names: names, options: options)
+            let arguments = Self.addArguments(archive: archive, names: names, options: options,
+                                              folder: folder)
             let result = try await ProcessRunner.run(executable: tool,
                                                      arguments: arguments,
                                                      currentDirectory: parent,
@@ -117,8 +122,11 @@ public struct RarEngine: ArchiveEngine {
     // MARK: - Argument building
 
     /// Exposed for tests: RAR's own switches differ enough from 7-Zip's to be worth pinning down.
-    static func addArguments(archive: URL, names: [String], options: CompressionOptions) -> [String] {
+    static func addArguments(archive: URL, names: [String], options: CompressionOptions,
+                             folder: String = "") -> [String] {
         var arguments = ["a", "-y", "-r"] + compressionArguments(options)
+        // -ap sets the path the added files get inside the archive.
+        if !folder.isEmpty { arguments.append("-ap\(folder)") }
         if options.excludeMacMetadata {
             arguments.append(contentsOf: ["-x*.DS_Store", "-x*/.DS_Store", "-x*__MACOSX*", "-x*/._*"])
         }

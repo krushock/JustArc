@@ -54,6 +54,7 @@
 "Checking…" = "Checking…";
 "Choose" = "Choose";
 "Choose a name and format for the archive." = "Choose a name and format for the archive.";
+"Choose files or folders to add to %@ in %@." = "Choose files or folders to add to %@ in %@.";
 "Choose files or folders to add to %@." = "Choose files or folders to add to %@.";
 "Choose one or more archives to open." = "Choose one or more archives to open.";
 "Choose the app that opens each kind of archive when you double-click it in the Finder." = "Choose the app that opens each kind of archive when you double-click it in the Finder.";

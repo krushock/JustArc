@@ -104,8 +104,11 @@ public protocol ArchiveEngine: Sendable {
                 cancellation: CancellationToken?,
                 progress: ProgressHandler?) async throws
 
+    /// Adds files and folders to an archive, each under its own name inside `folder`.
+    /// - Parameter folder: a path inside the archive, or "" for its root.
     func add(items: [URL],
              to archive: URL,
+             into folder: String,
              options: CompressionOptions,
              cancellation: CancellationToken?,
              progress: ProgressHandler?) async throws
@@ -156,9 +159,16 @@ public extension ArchiveEngine {
         throw ArchiveError.notWritable(options.format?.displayName ?? options.formatKey)
     }
 
+    func add(items: [URL], to archive: URL, into folder: String, options: CompressionOptions,
+             cancellation: CancellationToken?, progress: ProgressHandler?) async throws {
+        throw ArchiveError.notWritable(FormatRegistry.format(for: archive)?.displayName ?? "this format")
+    }
+
+    /// Adds at the root of the archive.
     func add(items: [URL], to archive: URL, options: CompressionOptions,
              cancellation: CancellationToken? = nil, progress: ProgressHandler? = nil) async throws {
-        throw ArchiveError.notWritable(FormatRegistry.format(for: archive)?.displayName ?? "this format")
+        try await add(items: items, to: archive, into: "", options: options,
+                      cancellation: cancellation, progress: progress)
     }
 
     func delete(entries: [ArchiveEntry], from archive: URL, password: String?) async throws {

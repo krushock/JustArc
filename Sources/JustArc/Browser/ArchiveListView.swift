@@ -237,8 +237,10 @@ final class ArchiveListDataSource: NSObject, NSOutlineViewDataSource, NSOutlineV
 
     var onSelectionChange: (() -> Void)?
     var onSortChange: ((ArchiveColumn, Bool) -> Void)?
-    /// Takes files dropped on the list. Returns false when nothing was done with them.
-    var onDropFiles: (([URL]) -> Bool)?
+    /// Takes files dropped on the list, with the path of the folder row they were
+    /// dropped on, or nil for the list as a whole. Returns false when nothing was
+    /// done with them.
+    var onDropFiles: (([URL], String?) -> Bool)?
     /// Whether a drop of these files would be accepted, so a read-only archive
     /// shows the "not here" cursor instead of failing after the drop.
     var canDropFiles: (([URL]) -> Bool)?
@@ -451,8 +453,22 @@ final class ArchiveListDataSource: NSObject, NSOutlineViewDataSource, NSOutlineV
         guard (info.draggingSource as? NSOutlineView) !== outlineView else { return [] }
         let urls = FileDropView.fileURLs(from: info)
         guard !urls.isEmpty, canDropFiles?(urls) ?? true else { return [] }
-        outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        // Over a folder, or between the rows of an expanded one, the drop goes into
+        // that folder and it lights up. Anywhere else it goes to the list as a whole.
+        outlineView.setDropItem(dropFolder(for: item), dropChildIndex: NSOutlineViewDropOnItemIndex)
         return .copy
+    }
+
+    /// The folder a drop over this row goes into: the row itself when it is a folder,
+    /// and for a file shown inside an expanded folder, that folder, as in the Finder.
+    /// Nil when that is simply the folder the list is already showing.
+    private func dropFolder(for item: Any?) -> EntryTree.Node? {
+        guard let node = node(for: item) else { return nil }
+        if node.isDirectory { return node }
+        // Search results are a flat list; a match's folder is not a row to light up.
+        guard !isFiltering, let parent = node.parent,
+              !parent.path.isEmpty, parent.path != currentPath else { return nil }
+        return parent
     }
 
     func outlineView(_ outlineView: NSOutlineView,
@@ -461,7 +477,7 @@ final class ArchiveListDataSource: NSObject, NSOutlineViewDataSource, NSOutlineV
                      childIndex index: Int) -> Bool {
         let urls = FileDropView.fileURLs(from: info)
         guard !urls.isEmpty else { return false }
-        return onDropFiles?(urls) ?? false
+        return onDropFiles?(urls, dropFolder(for: item)?.path) ?? false
     }
 
     // MARK: - Presentation helpers

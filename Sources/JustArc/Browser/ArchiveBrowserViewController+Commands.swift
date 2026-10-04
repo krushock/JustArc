@@ -15,13 +15,20 @@ extension ArchiveBrowserViewController {
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.prompt = L("Add")
-        panel.message = L("Choose files or folders to add to %@.", session.displayName)
+        panel.message = currentFolderPath.isEmpty
+            ? L("Choose files or folders to add to %@.", session.displayName)
+            : L("Choose files or folders to add to %@ in %@.",
+                (currentFolderPath as NSString).lastPathComponent, session.displayName)
         guard panel.runModal() == .OK else { return }
         add(items: panel.urls)
     }
 
-    func add(items: [URL]) {
+    /// Adds files to the archive.
+    /// - Parameter folder: where inside the archive they go. Nil means the folder
+    ///   the list is showing, which is where someone looking at it expects them.
+    func add(items: [URL], into folder: String? = nil) {
         guard !items.isEmpty else { return }
+        let folder = folder ?? currentFolderPath
         guard !session.isReadOnly else {
             present(ArchiveError.notWritable(session.format?.displayName ?? "this format"))
             return
@@ -29,7 +36,7 @@ extension ArchiveBrowserViewController {
 
         // An untitled window just stages the files until the user saves.
         guard let archiveURL = session.archiveURL else {
-            session.stage(items: items)
+            session.stage(items: items, into: folder)
             reloadFromSession()
             return
         }
@@ -42,7 +49,7 @@ extension ArchiveBrowserViewController {
             let done = await runOperation(title: L("Adding to %@", session.displayName)) { cancellation, progress in
                 // Files dragged in from a cloud folder have to be fetched first.
                 try await CloudFile.materializeAll(items, cancellation: cancellation, progress: progress)
-                try await self.engine.add(items: items, to: archiveURL, options: options,
+                try await self.engine.add(items: items, to: archiveURL, into: folder, options: options,
                                           cancellation: cancellation, progress: progress)
             }
             if done != nil { loadArchive() }

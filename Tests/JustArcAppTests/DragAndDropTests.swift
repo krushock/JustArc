@@ -93,6 +93,106 @@ final class DragAndDropTests: XCTestCase {
         XCTAssertEqual(browser.session.stagedRoots.count, 2)
     }
 
+    // MARK: - Dropping into a folder
+
+    func testFilesDroppedWhileInsideAFolderGoIntoThatFolder() async throws {
+        let archive = try await makeZip()
+        let (browser, window) = makeBrowser(archive: archive)
+        try await browser.session.load()
+        browser.reloadFromSession()
+        browser.navigate(to: "payload/docs")
+        XCTAssertEqual(browser.currentFolderPath, "payload/docs")
+
+        let extra = try makeExtra()
+        let table = try XCTUnwrap(firstSubview(of: NSOutlineView.self, in: browser.view))
+        // Below the last row, on the empty part of the list.
+        let point = table.convert(NSPoint(x: table.bounds.midX, y: table.bounds.maxY - 10), to: nil)
+        XCTAssertTrue(drop([extra], in: window, at: point))
+
+        try await waitFor { browser.session.tree.node(at: "payload/docs/extra.txt") != nil }
+        XCTAssertNil(browser.session.tree.node(at: "extra.txt"), "the file went to the root as well")
+        XCTAssertEqual(browser.currentFolderPath, "payload/docs", "the list jumped out of the folder")
+
+        let onDisk = try await SevenZipEngine().list(archive: archive, password: nil, encodingCodePage: nil)
+        XCTAssertTrue(onDisk.entries.contains { $0.path == "payload/docs/extra.txt" })
+    }
+
+    func testFilesDroppedOnTheStatusBarWhileInsideAFolderGoIntoItToo() async throws {
+        let archive = try await makeZip()
+        let (browser, window) = makeBrowser(archive: archive)
+        try await browser.session.load()
+        browser.reloadFromSession()
+        browser.navigate(to: "payload")
+
+        let bar = try XCTUnwrap(firstSubview(of: ArchiveStatusBar.self, in: browser.view))
+        let point = bar.convert(NSPoint(x: bar.bounds.midX, y: bar.bounds.midY), to: nil)
+        XCTAssertTrue(drop([try makeExtra()], in: window, at: point))
+        try await waitFor { browser.session.tree.node(at: "payload/extra.txt") != nil }
+    }
+
+    func testFilesDroppedOnAFolderRowGoIntoThatFolder() async throws {
+        let archive = try await makeZip()
+        let (browser, window) = makeBrowser(archive: archive)
+        try await browser.session.load()
+        browser.reloadFromSession()
+        browser.navigate(to: "payload")
+
+        // At "payload" the rows are "..", then the "docs" folder, then readme.txt.
+        let table = try XCTUnwrap(firstSubview(of: NSOutlineView.self, in: browser.view))
+        let row = try XCTUnwrap((0..<table.numberOfRows).first {
+            (table.item(atRow: $0) as? EntryTree.Node)?.path == "payload/docs" })
+        let rect = table.rect(ofRow: row)
+        XCTAssertTrue(drop([try makeExtra()], in: window,
+                           at: table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)))
+
+        try await waitFor { browser.session.tree.node(at: "payload/docs/extra.txt") != nil }
+        XCTAssertNil(browser.session.tree.node(at: "payload/extra.txt"))
+        XCTAssertEqual(browser.currentFolderPath, "payload")
+    }
+
+    func testFilesDroppedOnAFileRowGoWhereTheListIs() async throws {
+        let archive = try await makeZip()
+        let (browser, window) = makeBrowser(archive: archive)
+        try await browser.session.load()
+        browser.reloadFromSession()
+        browser.navigate(to: "payload")
+
+        let table = try XCTUnwrap(firstSubview(of: NSOutlineView.self, in: browser.view))
+        let row = try XCTUnwrap((0..<table.numberOfRows).first {
+            (table.item(atRow: $0) as? EntryTree.Node)?.path == "payload/readme.txt" })
+        let rect = table.rect(ofRow: row)
+        XCTAssertTrue(drop([try makeExtra()], in: window,
+                           at: table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)))
+        try await waitFor { browser.session.tree.node(at: "payload/extra.txt") != nil }
+    }
+
+    func testANewArchiveTakesFilesIntoTheFolderBeingShown() throws {
+        let (browser, window) = makeBrowser(archive: nil)
+        browser.session.stage(items: [root.appendingPathComponent("payload")])
+        browser.reloadFromSession()
+        browser.navigate(to: "payload/docs")
+
+        let table = try XCTUnwrap(firstSubview(of: NSOutlineView.self, in: browser.view))
+        let point = table.convert(NSPoint(x: table.bounds.midX, y: table.bounds.maxY - 10), to: nil)
+        XCTAssertTrue(drop([try makeExtra()], in: window, at: point))
+
+        XCTAssertNotNil(browser.session.tree.node(at: "payload/docs/extra.txt"))
+        XCTAssertNil(browser.session.tree.node(at: "extra.txt"))
+        XCTAssertEqual(browser.currentFolderPath, "payload/docs")
+    }
+
+    func testAddFilesUsesTheFolderBeingShown() async throws {
+        let archive = try await makeZip()
+        let (browser, _) = makeBrowser(archive: archive)
+        try await browser.session.load()
+        browser.reloadFromSession()
+        browser.navigate(to: "payload/docs")
+
+        // What the Add Files panel calls once files are chosen.
+        browser.add(items: [try makeExtra()])
+        try await waitFor { browser.session.tree.node(at: "payload/docs/extra.txt") != nil }
+    }
+
     func testAReadOnlyArchiveRefusesDrops() throws {
         // An ISO image can be read but not written, so there is nowhere for files to go.
         let iso = root.appendingPathComponent("disc.iso")
@@ -197,6 +297,25 @@ final class DragAndDropTests: XCTestCase {
         try await SevenZipEngine().create(archive: archive, items: [root.appendingPathComponent("payload")],
                                           options: CompressionOptions(formatKey: "zip"))
         return archive
+    }
+
+    private func makeExtra() throws -> URL {
+        let extra = root.appendingPathComponent("extra.txt")
+        try "added later\n".write(to: extra, atomically: true, encoding: .utf8)
+        return extra
+    }
+
+    /// Adding to an archive on disk runs in the background and then reloads the list.
+    private func waitFor(_ condition: @escaping () -> Bool, timeout: TimeInterval = 10,
+                         file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            guard Date() < deadline else {
+                XCTFail("timed out waiting", file: file, line: line)
+                return
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
     }
 
     /// Lets work queued on the main queue run.
