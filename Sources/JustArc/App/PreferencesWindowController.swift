@@ -16,7 +16,8 @@ final class PreferencesWindowController: NSWindowController {
         let panes: [(NSViewController, String, String)] = [
             (ExtractionSettingsViewController(), L("Extracting"), "arrow.down.document"),
             (ArchiveSettingsViewController(), L("Archives"), "shippingbox"),
-            (RarSettingsViewController(), L("RAR"), "doc.badge.gearshape"),
+            (FileTypesSettingsViewController(), L("File Types"), "doc.badge.gearshape"),
+            (RarSettingsViewController(), L("RAR"), "arrow.down.circle"),
         ]
         for (controller, title, symbol) in panes {
             controller.title = title
@@ -76,6 +77,14 @@ class SettingsPaneViewController: NSViewController {
         view = NSView()
         view.widthAnchor.constraint(greaterThanOrEqualToConstant: 460).isActive = true
     }
+
+    /// The tab controller sizes the window to this, so each pane gets a window that
+    /// fits it instead of inheriting the size of whichever pane was showing before.
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        view.layoutSubtreeIfNeeded()
+        preferredContentSize = view.fittingSize
+    }
 }
 
 // MARK: - Extracting
@@ -87,7 +96,7 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
     private let revealBox = NSButton(checkboxWithTitle: L("Reveal the result in Finder"), target: nil, action: nil)
     private let trashBox = NSButton(checkboxWithTitle: L("Move the archive to the Trash afterwards"), target: nil, action: nil)
     private let quitBox = NSButton(checkboxWithTitle: L("Quit after extracting"), target: nil, action: nil)
-    private let browseBox = NSButton(checkboxWithTitle: L("Open archives in a window instead of extracting"), target: nil, action: nil)
+    private let openActionPopUp = NSPopUpButton()
     private let conflictPopUp = NSPopUpButton()
     private let folderConflictPopUp = NSPopUpButton()
 
@@ -106,22 +115,28 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
             folderConflictPopUp.lastItem?.representedObject = setting.rawValue
         }
 
-        for control in [destinationPopUp, conflictPopUp, folderConflictPopUp] {
+        for action in ArchiveOpenAction.allCases {
+            openActionPopUp.addItem(withTitle: action.title)
+            openActionPopUp.lastItem?.representedObject = action.rawValue
+        }
+
+        for control in [openActionPopUp, destinationPopUp, conflictPopUp, folderConflictPopUp] {
             control.target = self
             control.action = #selector(valueChanged)
         }
-        for box in [smartFolderBox, revealBox, trashBox, quitBox, browseBox] {
+        for box in [smartFolderBox, revealBox, trashBox, quitBox] {
             box.target = self
             box.action = #selector(valueChanged)
         }
 
         install(NSGridView(views: [
+            [caption(L("Double-clicking an archive:")), openActionPopUp],
+            [NSGridCell.emptyContentView, note(L("Hold Option while opening to do the other. Dropping an archive on JustArc's Dock icon, or right-clicking it in the Finder and choosing Services ▸ Open Archive in JustArc, always opens it in a window."))],
             [caption(L("Extract to:")), destinationPopUp],
             [NSGridCell.emptyContentView, smartFolderBox],
             [NSGridCell.emptyContentView, revealBox],
             [NSGridCell.emptyContentView, trashBox],
             [NSGridCell.emptyContentView, quitBox],
-            [NSGridCell.emptyContentView, browseBox],
             [caption(L("If a file exists:")), conflictPopUp],
             [caption(L("If a folder exists:")), folderConflictPopUp],
         ]))
@@ -135,7 +150,8 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
         revealBox.state = Preferences.revealInFinder ? .on : .off
         trashBox.state = Preferences.moveArchiveToTrash ? .on : .off
         quitBox.state = Preferences.quitAfterQuickExtract ? .on : .off
-        browseBox.state = Preferences.browseInsteadOfExtracting ? .on : .off
+        openActionPopUp.selectItem(at: ArchiveOpenAction.allCases
+            .firstIndex(of: Preferences.archiveOpenAction) ?? 0)
         conflictPopUp.selectItem(at: conflictPopUp.itemArray.firstIndex {
             ($0.representedObject as? String) == Preferences.overwriteMode.rawValue } ?? 0)
         folderConflictPopUp.selectItem(at: folderConflictPopUp.itemArray.firstIndex {
@@ -149,7 +165,10 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
         Preferences.revealInFinder = revealBox.state == .on
         Preferences.moveArchiveToTrash = trashBox.state == .on
         Preferences.quitAfterQuickExtract = quitBox.state == .on
-        Preferences.browseInsteadOfExtracting = browseBox.state == .on
+        if let raw = openActionPopUp.selectedItem?.representedObject as? String,
+           let action = ArchiveOpenAction(rawValue: raw) {
+            Preferences.archiveOpenAction = action
+        }
         if let raw = conflictPopUp.selectedItem?.representedObject as? String,
            let setting = Preferences.OverwriteModeSetting(rawValue: raw) {
             Preferences.overwriteMode = setting

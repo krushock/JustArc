@@ -36,7 +36,15 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     var onOpen: ((URL) -> Void)?
 
     override func loadView() {
-        view = NSView()
+        // The sidebar lists archives, so an archive dropped on it is opened.
+        let dropView = FileDropView(frame: .zero)
+        dropView.canAccept = { urls in urls.allSatisfy { FormatRegistry.isArchive($0) } }
+        dropView.onDrop = { [weak self] urls in
+            guard let self, let onOpen else { return false }
+            DispatchQueue.main.async { urls.forEach(onOpen) }
+            return true
+        }
+        view = dropView
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("recent"))
         outline.addTableColumn(column)

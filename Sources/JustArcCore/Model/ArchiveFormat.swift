@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 public struct ArchiveFormat: Sendable, Hashable, Identifiable {
     public var id: String { key }
 
-    /// Stable identifier, also the value passed to 7zz via -t when creating.
+    /// Stable identifier, stored in preferences and mapped onto 7-Zip's handlers.
     public let key: String
     public let displayName: String
     /// Lowercase, no leading dot. First one is the default when saving.
@@ -58,9 +58,12 @@ public enum FormatRegistry {
                       engine: .externalRAR),
         ArchiveFormat(key: "tar", displayName: "TAR", extensions: ["tar", "cbt"],
                       canWrite: true, canEditInPlace: true, supportsCompressionLevel: false),
-        ArchiveFormat(key: "tgz", displayName: L("TAR + GZip"), extensions: ["tar.gz", "tgz"], canWrite: true),
-        ArchiveFormat(key: "tbz2", displayName: L("TAR + BZip2"), extensions: ["tar.bz2", "tbz2", "tbz"], canWrite: true),
-        ArchiveFormat(key: "txz", displayName: L("TAR + XZ"), extensions: ["tar.xz", "txz"], canWrite: true),
+        ArchiveFormat(key: "tgz", displayName: L("TAR + GZip"), extensions: ["tar.gz", "tgz"],
+                      canWrite: true, canEditInPlace: true),
+        ArchiveFormat(key: "tbz2", displayName: L("TAR + BZip2"), extensions: ["tar.bz2", "tbz2", "tbz"],
+                      canWrite: true, canEditInPlace: true),
+        ArchiveFormat(key: "txz", displayName: L("TAR + XZ"), extensions: ["tar.xz", "txz"],
+                      canWrite: true, canEditInPlace: true),
         ArchiveFormat(key: "tzst", displayName: L("TAR + Zstandard"), extensions: ["tar.zst", "tzst"]),
         ArchiveFormat(key: "gzip", displayName: "GZip", extensions: ["gz"], canWrite: true),
         ArchiveFormat(key: "bzip2", displayName: "BZip2", extensions: ["bz2"], canWrite: true),
@@ -86,8 +89,8 @@ public enum FormatRegistry {
 
     /// Formats offered in the Save As menu, in presentation order.
     public static var writable: [ArchiveFormat] {
-        let order = ["zip", "7z", "tgz", "tar", "tbz2", "txz", "tzst", "dmg", "gzip", "bzip2", "xz", "zstd", "rar"]
-        return order.compactMap { key in all.first { $0.key == key } }
+        let order = ["zip", "7z", "tgz", "tar", "tbz2", "txz", "dmg", "gzip", "bzip2", "xz", "rar"]
+        return order.compactMap { key in all.first { $0.key == key && $0.canWrite } }
     }
 
     public static func format(forKey key: String) -> ArchiveFormat? {

@@ -38,6 +38,9 @@
 	<!-- SUPublicEDKey is generated per developer with Sparkle's generate_keys and must
 	     be added before shipping, otherwise Sparkle will refuse to install updates. -->
 
+	<!-- NSSendFileTypes is what makes these appear for files selected in the Finder,
+	     under Services in the contextual menu and the Finder menu, and only for the
+	     kinds of file each one applies to. -->
 	<key>NSServices</key>
 	<array>
 		<dict>
@@ -48,13 +51,10 @@
 			</dict>
 			<key>NSMessage</key><string>compressSelection</string>
 			<key>NSPortName</key><string>JustArc</string>
-			<key>NSSendTypes</key>
+			<key>NSSendFileTypes</key>
 			<array>
-				<string>public.file-url</string>
-				<string>NSFilenamesPboardType</string>
+				<string>public.item</string>
 			</array>
-			<key>NSRequiredContext</key>
-			<dict><key>NSTextContent</key><string>FilePath</string></dict>
 		</dict>
 		<dict>
 			<key>NSMenuItem</key>
@@ -64,13 +64,10 @@
 			</dict>
 			<key>NSMessage</key><string>compressSelectionWithOptions</string>
 			<key>NSPortName</key><string>JustArc</string>
-			<key>NSSendTypes</key>
+			<key>NSSendFileTypes</key>
 			<array>
-				<string>public.file-url</string>
-				<string>NSFilenamesPboardType</string>
+				<string>public.item</string>
 			</array>
-			<key>NSRequiredContext</key>
-			<dict><key>NSTextContent</key><string>FilePath</string></dict>
 		</dict>
 		<dict>
 			<key>NSMenuItem</key>
@@ -80,13 +77,38 @@
 			</dict>
 			<key>NSMessage</key><string>extractSelection</string>
 			<key>NSPortName</key><string>JustArc</string>
-			<key>NSSendTypes</key>
+			<key>NSSendFileTypes</key>
 			<array>
-				<string>public.file-url</string>
-				<string>NSFilenamesPboardType</string>
+				<string>public.archive</string>
+				<string>public.zip-archive</string>
+				<string>org.7-zip.7-zip-archive</string>
+				<string>com.rarlab.rar-archive</string>
+				<string>public.tar-archive</string>
+				<string>org.gnu.gnu-zip-archive</string>
+				<string>org.gnu.gnu-zip-tar-archive</string>
+				<string>public.bzip2-archive</string>
+				<string>public.tar-bzip2-archive</string>
+				<string>org.tukaani.xz-archive</string>
+				<string>org.tukaani.tar-xz-archive</string>
+				<string>com.facebook.zst-archive</string>
+				<string>com.facebook.tar-zst-archive</string>
+				<string>public.cpio-archive</string>
+				<string>com.microsoft.cab</string>
+				<string>com.apple.xar-archive</string>
+				<string>public.iso-image</string>
+				<string>public.disk-image</string>
+				<string>com.apple.disk-image-udif</string>
+				<string>org.debian.deb-archive</string>
+				<string>com.redhat.rpm-archive</string>
+				<string>public.z-archive</string>
+				<string>org.7-zip.lha-archive</string>
+				<string>org.7-zip.arj-archive</string>
+				<string>com.justarc.zstd</string>
+				<string>com.justarc.tar-zstd</string>
+				<string>com.justarc.lzh</string>
+				<string>com.justarc.arj</string>
+				<string>com.justarc.wim</string>
 			</array>
-			<key>NSRequiredContext</key>
-			<dict><key>NSTextContent</key><string>FilePath</string></dict>
 		</dict>
 		<dict>
 			<key>NSMenuItem</key>
@@ -96,13 +118,38 @@
 			</dict>
 			<key>NSMessage</key><string>openSelection</string>
 			<key>NSPortName</key><string>JustArc</string>
-			<key>NSSendTypes</key>
+			<key>NSSendFileTypes</key>
 			<array>
-				<string>public.file-url</string>
-				<string>NSFilenamesPboardType</string>
+				<string>public.archive</string>
+				<string>public.zip-archive</string>
+				<string>org.7-zip.7-zip-archive</string>
+				<string>com.rarlab.rar-archive</string>
+				<string>public.tar-archive</string>
+				<string>org.gnu.gnu-zip-archive</string>
+				<string>org.gnu.gnu-zip-tar-archive</string>
+				<string>public.bzip2-archive</string>
+				<string>public.tar-bzip2-archive</string>
+				<string>org.tukaani.xz-archive</string>
+				<string>org.tukaani.tar-xz-archive</string>
+				<string>com.facebook.zst-archive</string>
+				<string>com.facebook.tar-zst-archive</string>
+				<string>public.cpio-archive</string>
+				<string>com.microsoft.cab</string>
+				<string>com.apple.xar-archive</string>
+				<string>public.iso-image</string>
+				<string>public.disk-image</string>
+				<string>com.apple.disk-image-udif</string>
+				<string>org.debian.deb-archive</string>
+				<string>com.redhat.rpm-archive</string>
+				<string>public.z-archive</string>
+				<string>org.7-zip.lha-archive</string>
+				<string>org.7-zip.arj-archive</string>
+				<string>com.justarc.zstd</string>
+				<string>com.justarc.tar-zstd</string>
+				<string>com.justarc.lzh</string>
+				<string>com.justarc.arj</string>
+				<string>com.justarc.wim</string>
 			</array>
-			<key>NSRequiredContext</key>
-			<dict><key>NSTextContent</key><string>FilePath</string></dict>
 		</dict>
 	</array>
 
@@ -150,7 +197,8 @@
 				<string>public.tar-bzip2-archive</string>
 				<string>org.tukaani.xz-archive</string>
 				<string>org.tukaani.tar-xz-archive</string>
-				<string>com.facebook.zstd-archive</string>
+				<string>com.facebook.zst-archive</string>
+				<string>com.facebook.tar-zst-archive</string>
 				<string>public.cpio-archive</string>
 				<string>com.microsoft.cab</string>
 				<string>com.apple.xar-archive</string>
@@ -158,11 +206,60 @@
 				<string>com.apple.disk-image-udif</string>
 				<string>org.debian.deb-archive</string>
 				<string>com.redhat.rpm-archive</string>
+				<string>public.z-archive</string>
+				<string>org.7-zip.lha-archive</string>
+				<string>org.7-zip.arj-archive</string>
 				<string>com.justarc.zstd</string>
 				<string>com.justarc.tar-zstd</string>
 				<string>com.justarc.lzh</string>
 				<string>com.justarc.arj</string>
 				<string>com.justarc.wim</string>
+			</array>
+		</dict>
+		<!-- The same archives by extension. Type identifiers for the less common formats
+		     differ from one Mac to the next, depending on which other archivers are
+		     installed and what they declare; the extension always matches. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Archive</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>zip</string>
+				<string>rar</string>
+				<string>7z</string>
+				<string>tar</string>
+				<string>gz</string>
+				<string>tgz</string>
+				<string>bz2</string>
+				<string>tbz2</string>
+				<string>tbz</string>
+				<string>xz</string>
+				<string>txz</string>
+				<string>zst</string>
+				<string>tzst</string>
+				<string>lzma</string>
+				<string>cab</string>
+				<string>lzh</string>
+				<string>lha</string>
+				<string>arj</string>
+				<string>cpio</string>
+				<string>wim</string>
+				<string>swm</string>
+				<string>esd</string>
+				<string>deb</string>
+				<string>rpm</string>
+				<string>z</string>
+				<string>taz</string>
+				<string>iso</string>
+				<string>xar</string>
+				<string>cbz</string>
+				<string>cbr</string>
+				<string>cbt</string>
+				<string>001</string>
 			</array>
 		</dict>
 	</array>

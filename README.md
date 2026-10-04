@@ -19,15 +19,32 @@ sidebar lists recently used archives. A bare launch opens an empty archive you c
 files into and then save; opening an archive while that window is still untouched
 opens it in its place rather than leaving an empty window behind.
 
-With a window open, an archive dropped on the Dock icon opens in the app. Double-click
-one in Finder while JustArc is not in use and it is unpacked instead. Option flips
-either. Any other file dropped on the Dock icon starts a new archive. Recently used
-archives are in File ▸ Open Recent and on the Dock icon's menu.
+**Extract or open.** Double-clicking an archive in the Finder unpacks it, opens it in
+a window, or asks, as chosen in Settings ▸ Extracting. Whatever that setting says,
+these always open the archive in a window, for when you want to look inside or edit:
+
+- dropping it on JustArc's Dock icon,
+- right-clicking it in the Finder and choosing Services ▸ Open Archive in JustArc,
+- opening it while a JustArc window is already up, or dropping it on an empty one,
+- holding Option while opening it, which does the opposite of the setting.
+
+Any other file dropped on the Dock icon starts a new archive. Recently used archives
+are in File ▸ Open Recent and on the Dock icon's menu.
+
+**File types.** Settings ▸ File Types lists each kind of archive with a menu of the
+apps that can open it, so JustArc can be made the default for zip but not for rar, say,
+or for everything at once. This is the same setting as Get Info ▸ Open With ▸ Change
+All in the Finder, and macOS confirms each change with a dialog of its own.
+
+**Files go in and come out by dragging.** Files and folders dropped anywhere in a
+window are added to its archive; a window showing an archive that cannot be changed
+refuses the drop. Files and folders drag out of the list straight to the Finder.
 
 Folders expand in place with a disclosure triangle, the way Finder's list view works,
 and double-clicking one still navigates into it. An archive that wraps everything in a
 single folder opens that folder for you. Space previews the selected file with Quick
-Look, Return opens it, and entries drag straight out to Finder.
+Look, and Return opens it. The `__MACOSX` folder and `._` files that macOS adds to
+the archives it makes are left out, both from the list and from what is extracted.
 
 Dragging from empty space, or across any column but Name, draws a selection rectangle
 the way the desktop does. Shift adds to the selection and Command toggles rows. Drag
@@ -105,6 +122,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 - `Sources/JustArcCore` — engine, models and safety checks. No AppKit, fully tested.
 - `Sources/JustArc` — the AppKit app: launch routing, Quick Extract, browser window.
+- `Tests/JustArcAppTests` — drives the app's real views: files dropped on each part of
+  the window, files and folders dragged out, and the Settings panes.
 - `Sources/SevenZipBridge` — a small C bridge over 7-Zip's format library, plus the
   vendored 7-Zip 25.01 source it compiles against. Archives are read and written in
   process; nothing runs as a subprocess, so passwords never appear in a command line.
@@ -127,7 +146,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
   reading it, shows a cancellable download panel, and names the provider if it fails.
 
 - **Finder Services.** Compress, compress choosing a format, extract, and open, all from
-  the Finder context menu.
+  the Finder's right-click Services menu. Extract and open are offered for archives only.
+- **Zip encryption.** The Save panel offers AES-256 or the older ZipCrypto, which is weak
+  but opens in tools that never learned AES, Archive Utility among them.
 - **Edited files go back in.** Open a file out of an archive, edit it in another app, and
   JustArc offers to update the archive when you switch back.
 - **Split volumes.** Pick a preset in the Save panel or type a size such as `1.5g`.
@@ -184,5 +205,10 @@ when the key is missing, and Sparkle refuses to install an unsigned update.
   is being written it is briefly visible to other processes of the same user. Every
   other format, and reading RAR, goes through the in-process 7-Zip library.
 - 7-Zip reads Zstandard but cannot write it, so `.zst` and `.tar.zst` are read-only.
+- Telling a drop on the Dock icon from a double-click relies on which process sent the
+  open request. That is confirmed for requests from the command line; the Dock itself
+  has not been tried, because nothing here can drive the pointer.
+- Extended attributes and resource forks that macOS stores in `__MACOSX` and `._` files
+  are skipped on extraction rather than applied to the extracted files.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.

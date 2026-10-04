@@ -112,6 +112,9 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
             sidebarItem.animator().isCollapsed.toggle()
             Preferences.showSidebar = !sidebarItem.isCollapsed
         }
+        browser.onOpenArchives = { urls in
+            for url in urls { (NSApp.delegate as? AppDelegate)?.openInBrowser(url) }
+        }
         browser.onFocusFilter = { [weak self] in
             self?.searchItem?.beginSearchInteraction()
         }

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import JustArcCore
 
 @MainActor
@@ -6,6 +7,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let quickExtract = QuickExtractCoordinator()
     private var browserControllers: [ArchiveWindowController] = []
     private var didReceiveOpenRequest = false
+    /// The empty window a bare launch puts up, so it can be taken away again when the
+    /// launch turns out to have been for a Finder service.
+    private weak var launchWindow: ArchiveWindowController?
+    private let launchDate = Date()
+    /// Work in progress that has no window of its own, such as compressing for a
+    /// Finder service. The app does not quit underneath it.
+    private var backgroundJobs = 0
     private var preferencesController: PreferencesWindowController?
     private var servicesProvider: ServicesProvider?
     private let recentMenu = RecentMenuController()
@@ -42,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // one more turn of the run loop before deciding this was a bare launch.
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.didReceiveOpenRequest, self.browserControllers.isEmpty else { return }
-            self.newArchiveWindow(nil)
+            self.launchWindow = self.makeBrowserWindow(for: nil)
         }
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -65,15 +73,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         guard !archives.isEmpty else { return }
 
-        let browse = shouldBrowseRatherThanExtract()
-        Diagnostics.log("open request: \(archives.count) archive(s), "
-                        + (browse ? "opening in a window" : "extracting"))
-        if browse {
+        let sender = OpenRequestSender.current()
+        let action = OpenRouting.action(
+            setting: Preferences.archiveOpenAction,
+            source: sender.source,
+            hasVisibleBrowserWindow: browserControllers.contains { $0.window?.isVisible == true },
+            optionHeld: NSEvent.modifierFlags.contains(.option))
+        Diagnostics.log("open request: \(archives.count) archive(s) from \(sender.description), "
+                        + "action \(action.rawValue)")
+        perform(action, on: archives)
+    }
+
+    private func perform(_ action: ArchiveOpenAction, on archives: [URL]) {
+        switch action {
+        case .browse:
             for archive in archives { openInBrowser(archive) }
             NSApp.activate(ignoringOtherApps: true)
-        } else {
+        case .extract:
             for archive in archives { RecentsRecorder.note(archive) }
             quickExtract.enqueue(archives)
+        case .ask:
+            // Asked on the next turn of the run loop, so the open event that brought
+            // the archives is answered first rather than held up by a dialog.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if let choice = self.askWhatToDo(with: archives) {
+                    self.perform(choice, on: archives)
+                } else {
+                    self.terminateIfNothingLeftToShow()
+                }
+            }
+        }
+    }
+
+    private func askWhatToDo(with archives: [URL]) -> ArchiveOpenAction? {
+        let alert = NSAlert()
+        alert.messageText = archives.count == 1
+            ? L("What would you like to do with %@?", archives[0].lastPathComponent)
+            : L("What would you like to do with these %d archives?", archives.count)
+        alert.informativeText = L("Settings has a choice for what double-clicking an archive does.")
+        alert.addButton(withTitle: L("Extract"))
+        alert.addButton(withTitle: L("Open"))
+        alert.addButton(withTitle: L("Cancel"))
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .extract
+        case .alertSecondButtonReturn: return .browse
+        default: return nil
         }
     }
 
@@ -95,21 +141,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return true
     }
 
-    /// Double-clicking an archive while JustArc is not in use unpacks it and gets out
-    /// of the way. Once a window is open, though, the user is working in the app, and
-    /// an archive dropped on the Dock icon should open in it rather than be unpacked
-    /// behind their back. Holding Option flips whichever of the two would happen.
-    private func shouldBrowseRatherThanExtract() -> Bool {
-        let workingInApp = browserControllers.contains { $0.window?.isVisible == true }
-        let browse = Preferences.browseInsteadOfExtracting || workingInApp
-        return browse != NSEvent.modifierFlags.contains(.option)
-    }
-
     private func terminateIfNothingLeftToShow() {
         guard Preferences.quitAfterQuickExtract else { return }
-        guard browserControllers.isEmpty, !quickExtract.hasActiveJobs else { return }
+        guard browserControllers.isEmpty, !quickExtract.hasActiveJobs, backgroundJobs == 0 else { return }
         guard preferencesController?.window?.isVisible != true else { return }
         NSApp.terminate(nil)
+    }
+
+    /// Brackets work that has no window, so the app neither shows an empty one for
+    /// it nor quits before it is done.
+    func beginBackgroundJob() {
+        backgroundJobs += 1
+        didReceiveOpenRequest = true
+        // Launched by the Finder to run a service: the empty window that a bare
+        // launch puts up would only be in the way.
+        if let launchWindow, launchWindow.isPristine, Date().timeIntervalSince(launchDate) < 5 {
+            launchWindow.window?.close()
+        }
+    }
+
+    func endBackgroundJob() {
+        backgroundJobs = max(backgroundJobs - 1, 0)
+        terminateIfNothingLeftToShow()
     }
 
     private func presentMissingEngineAndQuit() {
@@ -125,6 +178,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func registerServices() {
         let provider = ServicesProvider(
             quickExtract: quickExtract,
+            beginJob: { [weak self] in self?.beginBackgroundJob() },
+            endJob: { [weak self] in self?.endBackgroundJob() },
             openInBrowser: { [weak self] url in self?.openInBrowser(url) },
             stageIntoNewWindow: { [weak self] items in
                 guard let self else { return }
@@ -212,6 +267,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return true
     }
 
+    @objc func showSupportedFormats(_ sender: Any?) {
+        func extensions(_ formats: [ArchiveFormat]) -> String {
+            formats.flatMap(\.extensions).map { "." + $0 }.joined(separator: "  ")
+        }
+        let alert = NSAlert()
+        alert.messageText = L("Supported Formats")
+        alert.informativeText = [
+            L("Opens and extracts:"),
+            extensions(FormatRegistry.all),
+            "",
+            L("Creates:"),
+            extensions(SaveOptionsAccessory.availableFormats),
+            "",
+            EngineLocator.externalRAR == nil
+                ? L("RAR archives can be created once RARLAB's tool is installed from Settings.")
+                : "",
+        ].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        alert.addButton(withTitle: L("OK"))
+        alert.runModal()
+    }
+
     @objc func showAbout(_ sender: Any?) {
         // The standard panel already knows the app's name, icon and version; only the
         // credits are ours to supply.
@@ -223,6 +299,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             ])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+/// Works out who sent the open-documents event being handled.
+///
+/// The Finder and the Dock both ask Launch Services to open the file, and the event
+/// that results carries the asker's process ID. That is the only thing telling a
+/// double-click from a drop on the Dock icon.
+@MainActor
+enum OpenRequestSender {
+    static func current() -> (source: OpenSource, description: String) {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              let descriptor = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr)) else {
+            return (.other, "no Apple event")
+        }
+        let pid = descriptor.int32Value
+        let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
+        let description = "\(bundleID ?? "an unbundled process") (pid \(pid))"
+        switch bundleID {
+        case "com.apple.dock": return (.dock, description)
+        case "com.apple.finder": return (.finder, description)
+        default: return (.other, description)
+        }
     }
 }
 

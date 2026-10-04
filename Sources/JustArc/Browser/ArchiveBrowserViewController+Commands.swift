@@ -217,6 +217,31 @@ extension ArchiveBrowserViewController {
         }
     }
 
+    /// Extracts a folder and everything in it into this window's scratch space, for
+    /// dragging out to the Finder.
+    func materializeFolder(node: EntryTree.Node) async -> URL? {
+        if let staged = session.stagedSource(for: node.path) { return staged }
+        guard let archiveURL = session.archiveURL else { return nil }
+
+        // A drag-specific spot, so files opened for editing earlier are not overwritten.
+        let root = scratchRoot().appendingPathComponent("drag-\(UUID().uuidString)")
+        let produced = root.appendingPathComponent(node.path)
+        do {
+            let entries = node.descendantEntries()
+            if !entries.isEmpty {
+                try await engine.extract(archive: archiveURL, entries: entries, to: root,
+                                         password: session.password, overwrite: .overwrite,
+                                         flattenPaths: false, cancellation: nil, progress: nil)
+            }
+            // A folder the archive only implies, or an empty one, still has to exist.
+            try FileManager.default.createDirectory(at: produced, withIntermediateDirectories: true)
+            return produced
+        } catch {
+            Diagnostics.log("drag out: \(node.path) failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     // MARK: Deleting and renaming
 
     @objc func deleteSelected(_ sender: Any?) {
@@ -261,7 +286,10 @@ extension ArchiveBrowserViewController {
     }
 
     @objc func renameSelected(_ sender: Any?) {
-        guard let node = selectedNodesForCommand().first, let entry = node.entry else { return }
+        guard let node = selectedNodesForCommand().first else { return }
+        // A folder the archive only implies has no entry of its own, but renaming it
+        // still means something: everything under it moves.
+        let entry = node.entry ?? ArchiveEntry(path: node.path, isDirectory: node.isDirectory)
         guard let archiveURL = session.archiveURL, !session.isReadOnly else {
             present(ArchiveError.notWritable(session.format?.displayName ?? "this format"))
             return

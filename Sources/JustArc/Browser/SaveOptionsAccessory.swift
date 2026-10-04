@@ -7,6 +7,7 @@ final class SaveOptionsAccessory: NSView {
     private let formatPopUp = NSPopUpButton()
     private let levelPopUp = NSPopUpButton()
     private let passwordField = NSSecureTextField()
+    private let encryptionPopUp = NSPopUpButton()
     private let encryptNamesBox = NSButton(checkboxWithTitle: L("Encrypt file names"), target: nil, action: nil)
     private let excludeMetadataBox = NSButton(checkboxWithTitle: L("Skip .DS_Store and resource forks"),
                                               target: nil, action: nil)
@@ -40,7 +41,7 @@ final class SaveOptionsAccessory: NSView {
     }
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 440, height: 180))
+        super.init(frame: NSRect(x: 0, y: 0, width: 440, height: 212))
         build()
     }
 
@@ -74,6 +75,7 @@ final class SaveOptionsAccessory: NSView {
             [label(L("Format:")), formatPopUp],
             [label(L("Compression:")), levelPopUp],
             [label(L("Password:")), passwordField],
+            [label(L("Encryption:")), encryptionPopUp],
             [NSView(), encryptNamesBox],
             [label(L("Split into:")), volumeCombo],
             [NSView(), excludeMetadataBox],
@@ -111,8 +113,43 @@ final class SaveOptionsAccessory: NSView {
         encryptNamesBox.isEnabled = format.supportsEncryptedHeaders
         volumeCombo.isEnabled = format.supportsSplitVolumes
         if !format.supportsPassword { passwordField.stringValue = "" }
+        updateEncryptionChoices(for: format)
         if !format.supportsEncryptedHeaders { encryptNamesBox.state = .off }
         if !format.supportsSplitVolumes { volumeCombo.stringValue = "" }
+    }
+
+    /// Zip is the one format with a choice to make: AES, which is strong, or the
+    /// original ZipCrypto, which is weak but opens in every unzip tool ever written.
+    /// The others that take a password always use AES-256.
+    private func updateEncryptionChoices(for format: ArchiveFormat) {
+        let previous = selectedZipEncryption
+        encryptionPopUp.removeAllItems()
+        guard format.supportsPassword else {
+            encryptionPopUp.addItem(withTitle: L("None"))
+            encryptionPopUp.isEnabled = false
+            return
+        }
+        guard format.key == "zip" else {
+            encryptionPopUp.addItem(withTitle: "AES-256")
+            encryptionPopUp.isEnabled = false
+            return
+        }
+        let choices: [(String, CompressionOptions.ZipEncryption)] = [
+            (L("AES-256 (strong)"), .aes256),
+            (L("ZipCrypto (weak, opens everywhere)"), .zipCrypto),
+        ]
+        for (title, method) in choices {
+            encryptionPopUp.addItem(withTitle: title)
+            encryptionPopUp.lastItem?.representedObject = method.rawValue
+        }
+        encryptionPopUp.isEnabled = true
+        encryptionPopUp.selectItem(at: choices.firstIndex { $0.1 == previous } ?? 0)
+        encryptionPopUp.toolTip = L("Used only when a password is set. macOS's own Archive Utility cannot open AES zips; ZipCrypto can be broken.")
+    }
+
+    private var selectedZipEncryption: CompressionOptions.ZipEncryption {
+        (encryptionPopUp.selectedItem?.representedObject as? String)
+            .flatMap(CompressionOptions.ZipEncryption.init(rawValue:)) ?? .aes256
     }
 
     func options() -> CompressionOptions {
@@ -127,7 +164,8 @@ final class SaveOptionsAccessory: NSView {
                                   password: password,
                                   encryptFileNames: encryptNamesBox.state == .on,
                                   volumeSize: volume,
-                                  excludeMacMetadata: excludeMetadataBox.state == .on)
+                                  excludeMacMetadata: excludeMetadataBox.state == .on,
+                                  zipEncryption: selectedZipEncryption)
     }
 
     /// True when the text in the split field is neither empty nor a size we understand,

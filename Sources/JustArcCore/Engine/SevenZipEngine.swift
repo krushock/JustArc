@@ -20,7 +20,9 @@ public struct SevenZipEngine: ArchiveEngine {
                 info.formatName = "\(outer.info.formatName) / \(info.formatName)"
                 info.physicalSize = outer.info.physicalSize
             }
-            return ArchiveListing(info: info, entries: readable.bridge.entries())
+            // macOS's own bookkeeping is left out; see `MacMetadata`.
+            let entries = readable.bridge.entries().filter { !MacMetadata.isMetadata(path: $0.path) }
+            return ArchiveListing(info: info, entries: entries)
         }
     }
 
@@ -45,6 +47,7 @@ public struct SevenZipEngine: ArchiveEngine {
             let readable = try Readable.open(archive, password: password, codePage: codePage,
                                              unwrapProgress: whole.slice(offset: 0, span: 0.5))
             let indices = entries.map { Self.indices(of: $0, in: readable.bridge) }
+                ?? Self.indicesWithoutMacMetadata(in: readable.bridge)
             if let indices, indices.isEmpty { return }
 
             let summary = try readable.bridge.extract(
@@ -301,6 +304,7 @@ public struct SevenZipEngine: ArchiveEngine {
         let wanted = Set(entries.map(\.path))
         return bridge.indices().filter { item in
             if wanted.contains(item.path) { return true }
+            if MacMetadata.isMetadata(path: item.path) { return false }
             var parent = Substring(item.path)
             while let slash = parent.lastIndex(of: "/") {
                 parent = parent[..<slash]
@@ -308,6 +312,14 @@ public struct SevenZipEngine: ArchiveEngine {
             }
             return false
         }.map(\.index)
+    }
+
+    /// Every index but macOS's bookkeeping, or nil when the archive has none of it and
+    /// can simply be extracted whole.
+    static func indicesWithoutMacMetadata(in bridge: BridgeArchive) -> [UInt32]? {
+        let all = bridge.indices()
+        let kept = all.filter { !MacMetadata.isMetadata(path: $0.path) }
+        return kept.count == all.count ? nil : kept.map(\.index)
     }
 
     /// Everything to store for `items`, folders expanded, each under its own name at

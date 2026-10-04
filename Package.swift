@@ -81,6 +81,13 @@ let package = Package(
             path: "Tests/JustArcCoreTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // Drives the app's real views: drops, drags out and the Settings panes.
+        .testTarget(
+            name: "JustArcAppTests",
+            dependencies: ["JustArc", "JustArcCore"],
+            path: "Tests/JustArcAppTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ],
     cxxLanguageStandard: .cxx11
 )

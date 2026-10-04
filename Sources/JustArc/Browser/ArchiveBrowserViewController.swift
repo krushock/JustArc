@@ -47,6 +47,8 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     /// Which archive this window shows, so the sidebar can mark it.
     var onArchiveChange: ((URL?) -> Void)?
     var onToggleSidebar: (() -> Void)?
+    /// Archives dropped on an empty window, which are opened rather than added.
+    var onOpenArchives: (([URL]) -> Void)?
     var onFocusFilter: (() -> Void)?
 
     init(session: ArchiveSession) {
@@ -67,7 +69,12 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     // MARK: - Layout
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 620))
+        // The list takes drops itself; this catches the ones that land beside it, on
+        // the empty-window message or the status bar.
+        let dropView = FileDropView(frame: NSRect(x: 0, y: 0, width: 760, height: 620))
+        dropView.canAccept = { [weak self] urls in self?.canAcceptDrop(of: urls) ?? false }
+        dropView.onDrop = { [weak self] urls in self?.handleDrop(of: urls) ?? false }
+        view = dropView
         buildTable()
         assemble()
         wireCallbacks()
@@ -199,7 +206,8 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
             self?.listSource.sortAscending = ascending
             self?.reloadList()
         }
-        listSource.onDropFiles = { [weak self] urls in self?.add(items: urls) }
+        listSource.onDropFiles = { [weak self] urls in self?.handleDrop(of: urls) ?? false }
+        listSource.canDropFiles = { [weak self] urls in self?.canAcceptDrop(of: urls) ?? false }
         listSource.promiseProvider = { [weak self] entry in self?.makePromise(for: entry) }
 
         editedFiles.onChangesDetected = { [weak self] changed in
@@ -469,6 +477,41 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
+    // MARK: - Dropping files in
+
+    /// An untitled window nobody has put anything in yet.
+    private var isBlank: Bool {
+        session.isUntitled && !session.hasUnsavedChanges
+    }
+
+    /// Archives dropped on a blank window are meant to be opened, as dropping them on
+    /// the Dock icon would. Dropped anywhere else they are files like any other, and
+    /// go into the archive.
+    private func isRequestToOpen(_ urls: [URL]) -> Bool {
+        isBlank && urls.allSatisfy { url in
+            // A folder that happens to be called "backup.zip" is still a folder.
+            FormatRegistry.isArchive(url) && !url.hasDirectoryPath
+                && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
+        }
+    }
+
+    func canAcceptDrop(of urls: [URL]) -> Bool {
+        guard !urls.isEmpty else { return false }
+        return isRequestToOpen(urls) || session.canModifyContents
+    }
+
+    @discardableResult
+    func handleDrop(of urls: [URL]) -> Bool {
+        guard canAcceptDrop(of: urls) else { return false }
+        if isRequestToOpen(urls), let onOpenArchives {
+            // After the drop has finished, since opening replaces this very window.
+            DispatchQueue.main.async { onOpenArchives(urls) }
+            return true
+        }
+        add(items: urls)
+        return true
+    }
+
     // MARK: - Helpers shared with the command extension
 
     func navigateToNode(_ node: EntryTree.Node) {
@@ -486,11 +529,16 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         previewItems = urls
     }
 
-    /// Supplies a promise so entries can be dragged straight into Finder.
+    /// Supplies a promise so entries, folders included, can be dragged straight
+    /// into the Finder.
     func makePromise(for node: EntryTree.Node) -> NSFilePromiseProvider? {
-        guard !node.isDirectory, node.entry != nil else { return nil }
-        let ext = (node.name as NSString).pathExtension
-        let type = UTType(filenameExtension: ext) ?? .data
+        let type: UTType
+        if node.isDirectory {
+            type = .folder
+        } else {
+            guard node.entry != nil else { return nil }
+            type = UTType(filenameExtension: (node.name as NSString).pathExtension) ?? .data
+        }
         let provider = NSFilePromiseProvider(fileType: type.identifier, delegate: self)
         provider.userInfo = node.path
         return provider
@@ -515,7 +563,10 @@ extension ArchiveBrowserViewController: NSFilePromiseProviderDelegate {
             return
         }
         Task { @MainActor in
-            guard let source = await self.materialize(node: node, quiet: true) else {
+            let produced = node.isDirectory
+                ? await self.materializeFolder(node: node)
+                : await self.materialize(node: node, quiet: true)
+            guard let source = produced else {
                 completionHandler(ArchiveError.ioFailure(L("%@ could not be extracted.", node.name)))
                 return
             }

@@ -18,6 +18,16 @@ enum ExtractDestination: String, CaseIterable {
     }
 }
 
+extension ArchiveOpenAction {
+    var title: String {
+        switch self {
+        case .extract: return L("Extracts it")
+        case .browse: return L("Opens it in a window")
+        case .ask: return L("Asks what to do")
+        }
+    }
+}
+
 /// Thin typed wrapper over UserDefaults.
 enum Preferences {
     private static let defaults = UserDefaults.standard
@@ -29,7 +39,6 @@ enum Preferences {
             Key.revealInFinder: true,
             Key.moveArchiveToTrash: false,
             Key.quitAfterQuickExtract: true,
-            Key.browseInsteadOfExtracting: false,
             Key.overwriteMode: OverwriteModeSetting.ask.rawValue,
             Key.folderConflictMode: FolderConflictSetting.ask.rawValue,
             Key.excludeMacMetadata: true,
@@ -46,7 +55,9 @@ enum Preferences {
         static let revealInFinder = "RevealInFinder"
         static let moveArchiveToTrash = "MoveArchiveToTrash"
         static let quitAfterQuickExtract = "QuitAfterQuickExtract"
+        /// The old checkbox, read once to carry a choice over to `archiveOpenAction`.
         static let browseInsteadOfExtracting = "BrowseInsteadOfExtracting"
+        static let archiveOpenAction = "ArchiveOpenAction"
         static let overwriteMode = "OverwriteMode"
         static let folderConflictMode = "FolderConflictMode"
         static let excludeMacMetadata = "ExcludeMacMetadata"
@@ -151,9 +162,16 @@ enum Preferences {
         set { defaults.set(newValue, forKey: Key.quitAfterQuickExtract) }
     }
 
-    static var browseInsteadOfExtracting: Bool {
-        get { defaults.bool(forKey: Key.browseInsteadOfExtracting) }
-        set { defaults.set(newValue, forKey: Key.browseInsteadOfExtracting) }
+    /// What a double-click on an archive in the Finder does.
+    static var archiveOpenAction: ArchiveOpenAction {
+        get {
+            if let raw = defaults.string(forKey: Key.archiveOpenAction),
+               let action = ArchiveOpenAction(rawValue: raw) {
+                return action
+            }
+            return defaults.bool(forKey: Key.browseInsteadOfExtracting) ? .browse : .extract
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.archiveOpenAction) }
     }
 
     static var excludeMacMetadata: Bool {

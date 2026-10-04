@@ -22,4 +22,27 @@ final class FormatRegistryTests: XCTestCase {
         XCTAssertTrue(keys.contains("7z"))
         XCTAssertFalse(keys.contains("iso"))
     }
+
+    func testOnlyFormatsThatCanBeWrittenAreOffered() {
+        for format in FormatRegistry.writable {
+            XCTAssertTrue(format.canWrite, "\(format.key) is offered for saving but cannot be written")
+        }
+        // 7-Zip reads Zstandard but has no encoder for it.
+        XCTAssertFalse(FormatRegistry.writable.contains { $0.key == "zstd" || $0.key == "tzst" })
+    }
+
+    func testCompressedTarsCanBeEditedInPlace() {
+        for key in ["tgz", "tbz2", "txz"] {
+            XCTAssertEqual(FormatRegistry.format(forKey: key)?.canEditInPlace, true, key)
+        }
+    }
+
+    func testEveryAssociableTypeIsOneJustArcReads() {
+        for kind in AssociableFileType.all {
+            for ext in kind.extensions {
+                XCTAssertTrue(FormatRegistry.isArchive(URL(fileURLWithPath: "/x/a.\(ext)")),
+                              ".\(ext) is offered in Settings but JustArc does not read it")
+            }
+        }
+    }
 }

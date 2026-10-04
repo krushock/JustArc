@@ -237,7 +237,11 @@ final class ArchiveListDataSource: NSObject, NSOutlineViewDataSource, NSOutlineV
 
     var onSelectionChange: (() -> Void)?
     var onSortChange: ((ArchiveColumn, Bool) -> Void)?
-    var onDropFiles: (([URL]) -> Void)?
+    /// Takes files dropped on the list. Returns false when nothing was done with them.
+    var onDropFiles: (([URL]) -> Bool)?
+    /// Whether a drop of these files would be accepted, so a read-only archive
+    /// shows the "not here" cursor instead of failing after the drop.
+    var canDropFiles: (([URL]) -> Bool)?
     var promiseProvider: ((EntryTree.Node) -> NSFilePromiseProvider?)?
 
     /// True while a filter narrows the list, when a flat list of matches is clearer
@@ -445,6 +449,8 @@ final class ArchiveListDataSource: NSObject, NSOutlineViewDataSource, NSOutlineV
                      proposedChildIndex index: Int) -> NSDragOperation {
         // Only accept files coming from outside the archive window.
         guard (info.draggingSource as? NSOutlineView) !== outlineView else { return [] }
+        let urls = FileDropView.fileURLs(from: info)
+        guard !urls.isEmpty, canDropFiles?(urls) ?? true else { return [] }
         outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
         return .copy
     }
@@ -453,12 +459,9 @@ final class ArchiveListDataSource: NSObject, NSOutlineViewDataSource, NSOutlineV
                      acceptDrop info: NSDraggingInfo,
                      item: Any?,
                      childIndex index: Int) -> Bool {
-        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
-        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-                                                            options: options) as? [URL],
-              !urls.isEmpty else { return false }
-        onDropFiles?(urls)
-        return true
+        let urls = FileDropView.fileURLs(from: info)
+        guard !urls.isEmpty else { return false }
+        return onDropFiles?(urls) ?? false
     }
 
     // MARK: - Presentation helpers

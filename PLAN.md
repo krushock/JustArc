@@ -102,7 +102,8 @@ Declare `CFBundleDocumentTypes` (Viewer for read-only, Editor for writable) for:
 | M3 | Create & edit | **done** | Empty archive window, drag-in/add/delete/rename, Save and Save As with format, level, password, encrypted names and split volumes. RAR writing through RARLAB's tool, downloadable from Settings. Edited files are offered back to the archive |
 | M4 | Polish & ship | **done, except notarization** | Four Finder Services, filename encoding menu, Sparkle wired and embedded, hardened-runtime signing, installer disk image, English and Russian |
 | M5 | In-process 7-Zip | **done** | 7-Zip 25.01 built from source as `7z.so`, loaded through a C bridge: no subprocess, no passwords in argv, split volumes read back, zip encryption method selectable in the engine |
-| M6 | Later | not started | XADMaster for sit/legacy, App Store variant, Shortcuts actions |
+| M6 | Fit into the Finder | **done** | Settings ▸ File Types with a default app per kind of archive; extract, open or ask on double-click; Dock drop and Services always open a window; drops accepted anywhere in the window; folders drag out; `__MACOSX` hidden; app-level drag-and-drop tests |
+| M7 | Later | not started | XADMaster for sit/legacy, App Store variant, Shortcuts actions |
 
 **What is not verified.** Notarization needs a Developer ID Application certificate, and
 this machine has only an Apple Development one. The release script runs end to end

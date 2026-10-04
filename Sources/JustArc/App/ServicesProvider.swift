@@ -8,14 +8,20 @@ import JustArcCore
 @MainActor
 final class ServicesProvider: NSObject {
     private let quickExtract: QuickExtractCoordinator
+    private let beginJob: () -> Void
+    private let endJob: () -> Void
     private let openInBrowser: (URL) -> Void
     private let stageIntoNewWindow: ([URL]) -> Void
     private let engine = SevenZipEngine()
 
     init(quickExtract: QuickExtractCoordinator,
+         beginJob: @escaping () -> Void,
+         endJob: @escaping () -> Void,
          openInBrowser: @escaping (URL) -> Void,
          stageIntoNewWindow: @escaping ([URL]) -> Void) {
         self.quickExtract = quickExtract
+        self.beginJob = beginJob
+        self.endJob = endJob
         self.openInBrowser = openInBrowser
         self.stageIntoNewWindow = stageIntoNewWindow
     }
@@ -30,7 +36,11 @@ final class ServicesProvider: NSObject {
             error.pointee = L("Select one or more files in the Finder first.") as NSString
             return
         }
-        Task { await compress(items: items, askForOptions: false) }
+        beginJob()
+        Task {
+            await compress(items: items, askForOptions: false)
+            endJob()
+        }
     }
 
     @objc func compressSelectionWithOptions(_ pasteboard: NSPasteboard,
@@ -42,7 +52,9 @@ final class ServicesProvider: NSObject {
             return
         }
         // Staging them into a new window lets the user pick the format and options.
+        beginJob()
         stageIntoNewWindow(items)
+        endJob()
     }
 
     @objc func extractSelection(_ pasteboard: NSPasteboard,
@@ -53,7 +65,10 @@ final class ServicesProvider: NSObject {
             error.pointee = L("None of the selected files is an archive JustArc can read.") as NSString
             return
         }
+        beginJob()
+        for archive in archives { RecentsRecorder.note(archive) }
         quickExtract.enqueue(archives)
+        endJob()
     }
 
     @objc func openSelection(_ pasteboard: NSPasteboard,
@@ -64,7 +79,10 @@ final class ServicesProvider: NSObject {
             error.pointee = L("None of the selected files is an archive JustArc can read.") as NSString
             return
         }
+        beginJob()
         for archive in archives { openInBrowser(archive) }
+        NSApp.activate(ignoringOtherApps: true)
+        endJob()
     }
 
     // MARK: - Work

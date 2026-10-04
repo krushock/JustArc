@@ -154,6 +154,43 @@ final class SevenZipWriteTests: XCTestCase {
         XCTAssertTrue(names.contains("readme.txt"))
     }
 
+    /// A zip made by the Finder: the folder, plus `__MACOSX` holding AppleDouble files.
+    func testMacBookkeepingIsHiddenAndNotExtracted() async throws {
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let shadow = root.appendingPathComponent("__MACOSX/payload")
+        try FileManager.default.createDirectory(at: shadow, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: shadow.appendingPathComponent("._readme.txt"))
+        try Data("x".utf8).write(to: root.appendingPathComponent("payload/._readme.txt"))
+
+        let archive = root.appendingPathComponent("finder.zip")
+        try await engine.create(archive: archive,
+                                items: [root.appendingPathComponent("payload"),
+                                        root.appendingPathComponent("__MACOSX")],
+                                options: CompressionOptions(formatKey: "zip", excludeMacMetadata: false))
+
+        let listing = try await engine.list(archive: archive, password: nil, encodingCodePage: nil)
+        XCTAssertFalse(listing.entries.contains { $0.path.contains("__MACOSX") || $0.name.hasPrefix("._") },
+                       listing.entries.map(\.path).joined(separator: ", "))
+        XCTAssertTrue(EntryTree(entries: listing.entries).hasSingleRootItem,
+                      "the archive holds one folder, so Quick Extract must not wrap it in another")
+
+        let out = root.appendingPathComponent("out")
+        try await engine.extract(archive: archive, entries: nil, to: out, password: nil,
+                                 overwrite: .overwrite, flattenPaths: false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: out.appendingPathComponent("payload/readme.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: out.appendingPathComponent("__MACOSX").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: out.appendingPathComponent("payload/._readme.txt").path))
+
+        // Picking the folder in the browser must not drag its AppleDouble files along.
+        let picked = root.appendingPathComponent("out-picked")
+        try await engine.extract(archive: archive,
+                                 entries: [ArchiveEntry(path: "payload", isDirectory: true)],
+                                 to: picked, password: nil, overwrite: .overwrite, flattenPaths: false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: picked.appendingPathComponent("payload/docs/notes.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: picked.appendingPathComponent("payload/._readme.txt").path))
+    }
+
     func testSplitVolumesReadBack() async throws {
         let root = try FixtureBuilder.makeSourceTree()
         defer { FixtureBuilder.cleanup(root) }
