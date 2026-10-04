@@ -210,6 +210,11 @@ Z7_COM7F_IMF(UpdateCallback::CryptoGetTextPassword(BSTR *result)) {
     return StringToBstr(sourcePassword, result);
 }
 
+/// 7-Zip carries an errno from a failed read or write in an HRESULT of its own.
+bool IsSystemError(HRESULT result) {
+    return ((UInt32)result & 0xFFFF0000) == 0x88000000;
+}
+
 bool SourceIsEncrypted(SZArchive *source) {
     if (!source) return false;
     UInt32 count = 0;
@@ -386,21 +391,25 @@ extern "C" SZStatus sz_write(SZArchive *source,
     if (callbackSpec->progress.Cancelled()) {
         Fail(error, SZStatusCancelled, "The operation was cancelled.");
         status = SZStatusCancelled;
-    } else if (result != S_OK && (callbackSpec->sourcePasswordRequested
-                                  || (callbackSpec->hasPassword && SourceIsEncrypted(source)))) {
-        // Existing items had to be decoded to be carried over, and could not be.
-        // When a password for writing is given, 7-Zip decodes with that one without
-        // asking, so a failure on an encrypted source is read the same way.
-        if (callbackSpec->hasSourcePassword) {
-            Fail(error, SZStatusWrongPassword, "The password is incorrect.");
-            status = SZStatusWrongPassword;
-        } else {
-            Fail(error, SZStatusPasswordRequired, "This archive is password protected.");
-            status = SZStatusPasswordRequired;
-        }
     } else if (!callbackSpec->failurePath.empty()) {
         Fail(error, SZStatusCannotOpenFile, "Cannot read " + callbackSpec->failurePath + ": " + callbackSpec->failureDetail);
         status = SZStatusCannotOpenFile;
+    } else if (result != S_OK && callbackSpec->sourcePasswordRequested && !callbackSpec->hasSourcePassword) {
+        // Existing items had to be decoded to be carried over, and there was no
+        // password to decode them with.
+        Fail(error, SZStatusPasswordRequired, "This archive is password protected.");
+        status = SZStatusPasswordRequired;
+    } else if ((result == E_FAIL || result == S_FALSE)
+               && (callbackSpec->sourcePasswordRequested || callbackSpec->hasPassword)
+               && SourceIsEncrypted(source)) {
+        // The decoder gave up on an encrypted source, which is what a wrong password
+        // looks like. Only that: a disk that filled up or a file that could not be
+        // read has its own error code or its own branch above, and is not this.
+        Fail(error, SZStatusWrongPassword, "The password is incorrect.");
+        status = SZStatusWrongPassword;
+    } else if (IsSystemError(result)) {
+        Fail(error, SZStatusWriteError, std::string("Cannot create ") + outputPath + ": " + DescribeHRESULT(result));
+        status = SZStatusWriteError;
     } else if (result != S_OK) {
         Fail(error, SZStatusFailed, "7-Zip could not write the archive: " + DescribeHRESULT(result));
         status = SZStatusFailed;

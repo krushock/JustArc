@@ -201,15 +201,21 @@ when the key is missing, and Sparkle refuses to install an unsigned update.
 
 Archives are untrusted input, and the destination is the user's own data.
 
-- A file is decoded under a temporary name and moved into place only when it is
-  whole. A wrong password or a damaged archive leaves whatever was there before
-  exactly as it was, whichever overwrite rule was chosen.
-- Cancelling puts the destination back as it was found.
+- A file, and a link, is made under a temporary name and moved into place only when
+  it is whole. A damaged archive leaves whatever was there before exactly as it was,
+  whichever overwrite rule was chosen, and one item that fails does not stop the
+  others unless the disk itself has stopped taking writes.
+- Cancelling puts the destination back as it was found. So does a password that is
+  missing or wrong, so that the next attempt starts clean.
 - An archive that holds both a file and a folder of one name, which a disk cannot,
   is extracted with one of them renamed rather than refused.
-- Nothing is written outside the destination: not through `..`, an absolute path, a
-  symbolic link planted by an earlier entry, or a link that reaches out by way of
-  another link. Links pointing outside are not created.
+- Nothing is written outside the destination: not through `..`, an absolute path, or
+  a symbolic link planted by an earlier entry.
+- No symbolic link is left pointing outside the destination. Links are made last and
+  then each is followed on disk to where it really leads, so one that only escapes
+  in combination with another, made before or after it, is found and removed.
+- A hard link is a second name for a file of the same archive, never for a file that
+  merely has that name at the destination.
 - A folder is never removed to make room for a file, and the folder being extracted
   into is never one of the things "replaced".
 - setuid, setgid and sticky bits are not restored, and the user's umask applies.
@@ -252,6 +258,9 @@ Each of these has a test built from an archive made to break it, in
   that were replaced or moved aside are put back. Two exceptions: a replaced file on
   a volume without hard links (exFAT, FAT), and one replaced while extracting a disk
   image, stay replaced.
+- 7z and RAR give no way to tell a wrong password from damaged data. When nothing in
+  the archive decodes, JustArc calls it a wrong password; once one encrypted file
+  has decoded, later failures are reported as damage.
 - The reason the system gives for a failed write ("No space left on device") is in
   English whatever the app's language; the sentence around it is translated.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is

@@ -70,6 +70,10 @@ std::string DescribeHRESULT(HRESULT result) {
         case E_INVALIDARG: return "the format rejected a setting";
         default: break;
     }
+    // An errno from a failed read or write, which 7-Zip wraps in a code of its own.
+    if (((unsigned)result & 0xFFFF0000) == 0x88000000) {
+        return std::strerror((int)((unsigned)result & 0xFFFF));
+    }
     char buffer[64];
     std::snprintf(buffer, sizeof(buffer), "7-Zip error 0x%08X", (unsigned)result);
     return buffer;
