@@ -230,6 +230,13 @@ Each of these has a test built from an archive made to break it, in
   is being written it is briefly visible to other processes of the same user. Every
   other format, and reading RAR, goes through the in-process 7-Zip library.
 - 7-Zip reads Zstandard but cannot write it, so `.zst` and `.tar.zst` are read-only.
+- LZ4 is not read: 7-Zip has no handler for it.
+- A static library made on macOS (`.a` from `ar`) opens as a single symbol listing.
+  macOS writes the BSD layout, with member names moved into the data, which 7-Zip
+  does not parse. Libraries and `.deb` packages from Linux open normally.
+- A file name that is not valid UTF-8 is decoded with the DOS code page that goes with
+  the Mac's language (866 for Russian, 932 for Japanese, 437 otherwise), which is a
+  guess. View ▸ Filename Encoding sets it for the archive in the window.
 - Telling a drop on the Dock icon from a double-click relies on which process sent the
   open request. That is confirmed for requests from the command line; the Dock itself
   has not been tried, because nothing here can drive the pointer.

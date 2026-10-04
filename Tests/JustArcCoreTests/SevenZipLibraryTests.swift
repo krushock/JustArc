@@ -25,7 +25,7 @@ final class SevenZipLibraryTests: XCTestCase {
         defer { FixtureBuilder.cleanup(root) }
 
         var error = SZError()
-        var options = SZOpenOptions(password: nil, extensionHint: nil, codePage: -1)
+        var options = SZOpenOptions(password: nil, extensionHint: nil, codePage: -1, fallbackCodePage: 0)
         guard let handle = archive.path.withCString({ sz_open($0, &options, &error) }) else {
             return XCTFail("open failed: \(BridgeError.message(from: &error))")
         }

@@ -26,7 +26,8 @@ final class BridgeArchive {
                 url.path.withCString { path in
                     var options = SZOpenOptions(password: passwordPointer,
                                                 extensionHint: hint,
-                                                codePage: Int32(codePage ?? -1))
+                                                codePage: Int32(codePage ?? -1),
+                                                fallbackCodePage: Int32(ArchiveTextEncoding.likelyLegacyCodePage))
                     return sz_open(path, &options, &error)
                 }
             }

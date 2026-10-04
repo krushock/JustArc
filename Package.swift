@@ -50,6 +50,10 @@ let package = Package(
                 .define("_LARGEFILE_SOURCE"),
                 .define("_REENTRANT"),
                 .unsafeFlags(["-w"]),
+            ],
+            linkerSettings: [
+                // For decoding file names in legacy code pages.
+                .linkedFramework("CoreFoundation"),
             ]
         ),
         .target(

@@ -42,8 +42,8 @@ Two modes, chosen at launch:
 | zip (zip64, jar/ipa/apk/epub) | ✓ | ✓ (Deflate/Store, levels) | ZipCrypto + AES | ZipCrypto + AES-256 | 7z.so |
 | 7z | ✓ | ✓ (LZMA2, solid, levels) | AES-256 (+ encrypted headers) | AES-256 (+ encrypted headers) | 7z.so |
 | rar / rar5 (incl. multi-volume) | ✓ | only if user-installed `rar` binary present | ✓ | ✓ via `rar` | 7z.so (read), rar CLI (write) |
-| tar, tar.gz/tgz, tar.bz2, tar.xz, tar.zst, tar.lz4 | ✓ | ✓ (not zst/lz4) | n/a | n/a | 7z.so |
-| gz, bz2, xz, zst, lz4 (single file) | ✓ | ✓ (not zst/lz4) | n/a | n/a | 7z.so |
+| tar, tar.gz/tgz, tar.bz2, tar.xz, tar.zst | ✓ | ✓ (not zst) | n/a | n/a | 7z.so |
+| gz, bz2, xz, zst, Z (single file) | ✓ | ✓ (gz, bz2, xz) | n/a | n/a | 7z.so |
 | dmg (UDIF: UDZO/ULFO/UDBZ/UDRW, HFS+/APFS) | ✓ | ✓ | AES-128/256 | AES-128/256 | hdiutil (mount-based) |
 | iso, cab, xar/pkg, cpio, ar/deb, rpm, wim, lzh, arj, z | ✓ | – | – | – | 7z.so |
 | sit/sitx, legacy Mac formats | phase 4 | – | – | – | XADMaster (The Unarchiver's framework) |

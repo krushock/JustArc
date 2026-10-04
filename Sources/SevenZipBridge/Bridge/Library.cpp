@@ -14,6 +14,9 @@
 #include "../C/7zVersion.h"
 
 #include <dlfcn.h>
+#include <langinfo.h>
+#include <locale.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -136,6 +139,13 @@ using namespace SZBridge;
 extern "C" SZStatus sz_load(const char *libraryPath, SZError *error) {
     std::lock_guard<std::mutex> lock(g_loadLock);
     if (g_library) return SZStatusOK;
+
+    // 7-Zip decides how to read names that do not say they are UTF-8 at the moment
+    // it is loaded, from the process's locale: in a UTF-8 locale it reads them as
+    // UTF-8, otherwise byte by byte. An app starts in the "C" locale, which made a
+    // name such as "café" from the macOS zip tool come out as "cafÃ©".
+    const char *codeset = nl_langinfo(CODESET);
+    if (!codeset || strcasecmp(codeset, "UTF-8") != 0) setlocale(LC_CTYPE, "UTF-8");
 
     void *module = dlopen(libraryPath, RTLD_NOW | RTLD_LOCAL);
     if (!module) {
@@ -402,18 +412,6 @@ Attempt OpenStream(IInStream *stream, const std::vector<const Handler *> &candid
             continue;
         }
 
-        if (codePage >= 0) {
-            // Only formats without a declared encoding take this; the rest ignore it.
-            CMyComPtr<ISetProperties> setProperties;
-            archive.QueryInterface(IID_ISetProperties, (void **)&setProperties);
-            if (setProperties) {
-                const wchar_t *names[] = { L"cp" };
-                NCOM::CPropVariant values[1];
-                values[0] = (UInt32)codePage;
-                setProperties->SetProperties(names, values, 1);
-            }
-        }
-
         if (stream->Seek(0, STREAM_SEEK_SET, nullptr) != S_OK) return Attempt::Failed;
         const UInt64 scanLimit = 1 << 23;
         if (archive->Open(stream, &scanLimit, callback) == S_OK) {
@@ -524,6 +522,8 @@ extern "C" SZArchive *sz_open(const char *path, const SZOpenOptions *options, SZ
     opened->password = password;
     opened->hasPassword = hasPassword;
     opened->defaultItemName = DefaultItemName(*handler, opened->path);
+    opened->codePage = codePage;
+    if (options && options->fallbackCodePage > 0) opened->fallbackCodePage = options->fallbackCodePage;
 
     NCOM::CPropVariant prop;
     if (archive->GetArchiveProperty(kpidComment, &prop) == S_OK && prop.vt == VT_BSTR && prop.bstrVal) {
@@ -575,9 +575,51 @@ bool GetStringProperty(IInArchive *archive, UInt32 index, PROPID id, UString &va
     return true;
 }
 
+/// Names written before UTF-8 was usual are in whatever code page the machine that
+/// made the archive used, and nothing in the archive says which.
+///
+/// 7-Zip hands back each byte it could not read as UTF-8 as a marker character, from
+/// which the original bytes can be recovered exactly. A name holding such markers is
+/// decoded with the code page the user chose, or failing that a likely one. A name
+/// that reads as UTF-8 is left alone unless the user has said what the names are in.
+static UString DecodedName(SZArchive *archive, const UString &path) {
+    bool undecodable = false;
+    bool beyondASCII = false;
+    for (unsigned i = 0; i < path.Len(); i++) {
+        const wchar_t c = path[i];
+        if (c >= 0xEF80 && c <= 0xEFFF) undecodable = true;
+        if (c >= 0x80) beyondASCII = true;
+    }
+    const bool chosen = archive->codePage > 0 && archive->codePage != 65001;
+    if (!undecodable && !(chosen && beyondASCII)) return path;
+
+    const unsigned codePage = (unsigned)(chosen ? archive->codePage : archive->fallbackCodePage);
+    // The bytes as they are in the archive: a marker stands for one byte, and
+    // anything that did read as UTF-8 was those UTF-8 bytes.
+    std::string raw;
+    UString run;
+    for (unsigned i = 0; i < path.Len(); i++) {
+        const wchar_t c = path[i];
+        if (c >= 0xEF80 && c <= 0xEFFF) {
+            raw += Narrow(run);
+            run.Empty();
+            raw += (char)(unsigned char)(c & 0xFF);
+        } else {
+            run += c;
+        }
+    }
+    raw += Narrow(run);
+
+    std::string utf8;
+    if (!DecodeLegacyName(raw, codePage, utf8) || utf8.empty()) return path;
+    return Wide(utf8.c_str());
+}
+
 UString ItemPath(SZArchive *archive, UInt32 index) {
     UString path;
-    if (GetStringProperty(archive->archive, index, kpidPath, path) && !path.IsEmpty()) return path;
+    if (GetStringProperty(archive->archive, index, kpidPath, path) && !path.IsEmpty()) {
+        return DecodedName(archive, path);
+    }
     return Wide(archive->defaultItemName.c_str());
 }
 

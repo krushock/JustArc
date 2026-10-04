@@ -71,6 +71,9 @@ typedef struct SZOpenOptions {
     /// A code page for archives that store names without declaring an encoding,
     /// such as old zip files. Negative means automatic.
     int32_t codePage;
+    /// The code page for names that are not valid UTF-8 when `codePage` leaves the
+    /// choice open. Zero means 437, which is what the zip format itself specifies.
+    int32_t fallbackCodePage;
 } SZOpenOptions;
 
 SZArchive *sz_open(const char *path, const SZOpenOptions *options, SZError *error);

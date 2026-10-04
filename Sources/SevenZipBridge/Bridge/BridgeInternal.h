@@ -85,6 +85,9 @@ struct SZArchive {
     UString password;
     bool hasPassword = false;
     std::string defaultItemName;
+    /// The code page chosen for names, or negative when it was left to us.
+    int32_t codePage = -1;
+    int32_t fallbackCodePage = 437;
     // Storage behind the pointers handed out by sz_item.
     std::string itemPath;
     std::string itemMethod;
@@ -100,6 +103,10 @@ bool GetStringProperty(IInArchive *archive, UInt32 index, PROPID id, UString &va
 /// The item's path as the archive stores it, or the archive's own name less its
 /// extension when a single-stream format such as gzip stores none.
 UString ItemPath(SZArchive *archive, UInt32 index);
+
+/// Decodes bytes in a Windows or DOS code page into UTF-8. False when macOS has no
+/// such encoding or the bytes do not fit it.
+bool DecodeLegacyName(const std::string &bytes, unsigned codePage, std::string &utf8);
 
 /// Folders, symbolic links and the Unix mode, however the format expresses them.
 bool ItemIsDirectory(IInArchive *archive, UInt32 index);
