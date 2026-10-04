@@ -32,7 +32,13 @@ public final class CancellationToken: @unchecked Sendable {
         self.process = process
         let alreadyCancelled = cancelled
         lock.unlock()
-        if alreadyCancelled { process.terminate() }
+        // Terminating a process that has not been launched raises an exception.
+        if alreadyCancelled, process.isRunning { process.terminate() }
+    }
+
+    /// Stops a process that was launched after cancellation had already happened.
+    func terminateIfCancelled(_ process: Process) {
+        if isCancelled, process.isRunning { process.terminate() }
     }
 
     public func cancel() {
@@ -42,7 +48,7 @@ public final class CancellationToken: @unchecked Sendable {
         let pending = handlers
         handlers.removeAll()
         lock.unlock()
-        process?.terminate()
+        if let process, process.isRunning { process.terminate() }
         for handler in pending { handler() }
     }
 }
@@ -120,6 +126,7 @@ public enum ProcessRunner {
 
             do {
                 try process.run()
+                cancellation?.terminateIfCancelled(process)
                 if let inPipe, let stdin {
                     inPipe.fileHandleForWriting.write(Data(stdin.utf8))
                     try? inPipe.fileHandleForWriting.close()

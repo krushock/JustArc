@@ -111,11 +111,12 @@ final class AddIntoFolderTests: XCTestCase {
     }
 
     func testRarIsToldThePathInsideTheArchive() {
-        let arguments = RarEngine.addArguments(archive: URL(fileURLWithPath: "/tmp/a.rar"), names: ["extra.txt"],
+        let list = URL(fileURLWithPath: "/tmp/names.lst")
+        let arguments = RarEngine.addArguments(archive: URL(fileURLWithPath: "/tmp/a.rar"), listFile: list,
                                                options: CompressionOptions(formatKey: "rar"),
                                                folder: "payload/docs")
         XCTAssertTrue(arguments.contains("-appayload/docs"), "\(arguments)")
-        XCTAssertFalse(RarEngine.addArguments(archive: URL(fileURLWithPath: "/tmp/a.rar"), names: ["x"],
+        XCTAssertFalse(RarEngine.addArguments(archive: URL(fileURLWithPath: "/tmp/a.rar"), listFile: list,
                                               options: CompressionOptions(formatKey: "rar"))
             .contains { $0.hasPrefix("-ap") })
     }
@@ -137,6 +138,45 @@ final class AddIntoFolderTests: XCTestCase {
         XCTAssertTrue(found.contains("payload/docs/extra.txt"), "\(found.sorted())")
         XCTAssertFalse(found.contains("extra.txt"))
         XCTAssertTrue(found.contains("payload/readme.txt"))
+    }
+
+    /// rar reads a name on its command line as a switch when it starts with "-", and
+    /// with -r as a pattern to look for in every subfolder.
+    func testRarTakesNamesAsNamesAndNothingElse() async throws {
+        try XCTSkipUnless(EngineLocator.externalRAR != nil, "RARLAB's rar is not installed")
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let rar = RarEngine()
+        let options = CompressionOptions(formatKey: "rar")
+
+        // A second readme.txt one level down, which -r would have swept up.
+        let nested = root.appendingPathComponent("payload/readme.txt")
+        let top = try makeExtra(in: root, named: "readme.txt", text: "top\n")
+        // "-df" is rar's switch for deleting files after archiving them.
+        let hostile = try makeExtra(in: root, named: "-df", text: "not a switch\n")
+
+        let archive = root.appendingPathComponent("names.rar")
+        try await rar.create(archive: archive, items: [top, hostile], options: options)
+
+        let found = try await paths(in: archive)
+        XCTAssertEqual(found, ["readme.txt", "-df"], "\(found.sorted())")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: top.path), "the added file was deleted from disk")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: hostile.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: nested.path))
+
+        // A folder still goes in with everything inside it.
+        let folders = root.appendingPathComponent("folders.rar")
+        try await rar.create(archive: folders, items: [root.appendingPathComponent("payload")], options: options)
+        let inFolders = try await paths(in: folders)
+        XCTAssertTrue(inFolders.contains("payload/docs/notes.txt"), "\(inFolders.sorted())")
+
+        // Deleting and renaming an entry whose name looks like a switch.
+        try await rar.rename(entry: ArchiveEntry(path: "-df", isDirectory: false), to: "@list",
+                             in: archive, password: nil)
+        try await rar.delete(entries: [ArchiveEntry(path: "readme.txt", isDirectory: false)],
+                             from: archive, password: nil)
+        let after = try await paths(in: archive)
+        XCTAssertEqual(after, ["@list"], "\(after.sorted())")
     }
 
     // MARK: - Session

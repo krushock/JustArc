@@ -45,7 +45,9 @@ public enum VolumeSize {
             }
         }
 
-        guard let value = Double(digits), value > 0 else { return nil }
+        // No volume is an exabyte; larger numbers are typing accidents, and would
+        // not fit the integer the spec is written with.
+        guard let value = Double(digits), value > 0, value < 1e15 else { return nil }
 
         let suffix: String
         switch unit {

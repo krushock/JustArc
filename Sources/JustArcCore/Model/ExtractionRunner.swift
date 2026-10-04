@@ -72,6 +72,9 @@ public enum ExtractionRunner {
             for folder in job.folderConflicts {
                 let existing = try PathSafety.resolvedURL(for: folder, in: job.destination)
                 guard PathSafety.itemExists(at: existing) else { continue }
+                // Whatever the archive calls its entries, the folder being extracted
+                // into is never one of the things replaced.
+                guard existing.standardizedFileURL != PathSafety.canonicalRoot(job.destination) else { continue }
                 try moveToTrashOrDelete(existing)
                 trashed.append(folder)
             }
@@ -174,16 +177,19 @@ public enum ExtractionRunner {
     }
 
     /// Replacing a folder should be recoverable, so it goes to the Trash rather than
-    /// being deleted outright. Volumes without a Trash fall back to removal.
+    /// being deleted outright. Only a volume that has no Trash falls back to removal;
+    /// any other failure stops the extraction, since deleting for good is not what
+    /// the dialog offered.
     static func moveToTrashOrDelete(_ url: URL) throws {
         do {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-        } catch {
-            // Falling back silently would quietly break the promise the dialog makes,
-            // so the reason is always recorded.
-            Diagnostics.log("could not trash \(url.lastPathComponent), deleting instead: "
-                            + "\(error.localizedDescription)")
+        } catch let error as CocoaError where error.code == .featureUnsupported {
+            Diagnostics.log("no Trash on the volume holding \(url.lastPathComponent), deleting instead")
             try FileManager.default.removeItem(at: url)
+        } catch {
+            throw ArchiveError.ioFailure(
+                L("%@ could not be moved to the Trash, so it was left as it is. %@",
+                  url.lastPathComponent, error.localizedDescription))
         }
     }
 }

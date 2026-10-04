@@ -21,12 +21,12 @@ public final class EntryTree {
         /// Recursive size of a folder, or the entry size for a file.
         public private(set) lazy var totalSize: UInt64 = {
             if !isDirectory { return entry?.size ?? 0 }
-            return children.reduce(0) { $0 + $1.totalSize }
+            return children.reduce(0) { $0.addingSaturating($1.totalSize) }
         }()
 
         public private(set) lazy var totalPacked: UInt64 = {
             if !isDirectory { return entry?.packedSize ?? 0 }
-            return children.reduce(0) { $0 + $1.totalPacked }
+            return children.reduce(0) { $0.addingSaturating($1.totalPacked) }
         }()
 
         public private(set) lazy var fileCount: Int = {

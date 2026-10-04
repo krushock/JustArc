@@ -64,7 +64,9 @@ public struct RarEngine: ArchiveEngine {
         }
 
         for (parent, names) in groups {
-            let arguments = Self.addArguments(archive: archive, names: names, options: options,
+            let list = try Self.writeListFile(names)
+            defer { try? FileManager.default.removeItem(at: list) }
+            let arguments = Self.addArguments(archive: archive, listFile: list, options: options,
                                               folder: folder)
             let result = try await ProcessRunner.run(executable: tool,
                                                      arguments: arguments,
@@ -77,13 +79,24 @@ public struct RarEngine: ArchiveEngine {
         progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
 
+    /// Names go to rar in a list file, never on its command line. There a name such
+    /// as "-df" is read as a switch (that one deletes the files after archiving), and
+    /// several thousand names do not fit at all.
+    static func writeListFile(_ names: [String]) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("justarc-rar-\(UUID().uuidString).lst")
+        try Data((names.joined(separator: "\n") + "\n").utf8).write(to: url, options: .atomic)
+        return url
+    }
+
     public func delete(entries: [ArchiveEntry], from archive: URL, password: String?) async throws {
         guard !entries.isEmpty else { return }
         let tool = try Self.requireTool()
+        let list = try Self.writeListFile(entries.map(\.path))
+        defer { try? FileManager.default.removeItem(at: list) }
         var arguments = ["d", "-y"]
         if let password, !password.isEmpty { arguments.append("-p\(password)") }
-        arguments.append(archive.path)
-        arguments.append(contentsOf: entries.map(\.path))
+        arguments.append(contentsOf: ["--", archive.path, "@" + list.path])
 
         let result = try await ProcessRunner.run(executable: tool, arguments: arguments)
         try Self.check(result, password: password)
@@ -95,7 +108,9 @@ public struct RarEngine: ArchiveEngine {
         let tool = try Self.requireTool()
         var arguments = ["rn", "-y"]
         if let password, !password.isEmpty { arguments.append("-p\(password)") }
-        arguments.append(contentsOf: [archive.path, entry.path, ArchivePath.normalize(newPath)])
+        // "--" ends the switches, and "-@" stops a name starting with "@" being read
+        // as a list file, so an entry's name is only ever a name.
+        arguments.append(contentsOf: ["-@", "--", archive.path, entry.path, ArchivePath.normalize(newPath)])
 
         let result = try await ProcessRunner.run(executable: tool, arguments: arguments)
         try Self.check(result, password: password)
@@ -109,8 +124,7 @@ public struct RarEngine: ArchiveEngine {
         defer { staging.cleanup() }
 
         var arguments = ["a", "-y"] + Self.compressionArguments(options)
-        arguments.append(archive.path)
-        arguments.append(staging.relativePath)
+        arguments.append(contentsOf: ["-@", "--", archive.path, staging.relativePath])
 
         let result = try await ProcessRunner.run(executable: tool,
                                                  arguments: arguments,
@@ -122,16 +136,18 @@ public struct RarEngine: ArchiveEngine {
     // MARK: - Argument building
 
     /// Exposed for tests: RAR's own switches differ enough from 7-Zip's to be worth pinning down.
-    static func addArguments(archive: URL, names: [String], options: CompressionOptions,
+    static func addArguments(archive: URL, listFile: URL, options: CompressionOptions,
                              folder: String = "") -> [String] {
-        var arguments = ["a", "-y", "-r"] + compressionArguments(options)
+        // No -r: a folder named in the list is archived with everything in it anyway,
+        // while -r turns every name into a pattern looked for in every subfolder, so
+        // adding one notes.txt would sweep up each notes.txt beneath it.
+        var arguments = ["a", "-y"] + compressionArguments(options)
         // -ap sets the path the added files get inside the archive.
         if !folder.isEmpty { arguments.append("-ap\(folder)") }
         if options.excludeMacMetadata {
             arguments.append(contentsOf: ["-x*.DS_Store", "-x*/.DS_Store", "-x*__MACOSX*", "-x*/._*"])
         }
-        arguments.append(archive.path)
-        arguments.append(contentsOf: names)
+        arguments.append(contentsOf: ["--", archive.path, "@" + listFile.path])
         return arguments
     }
 

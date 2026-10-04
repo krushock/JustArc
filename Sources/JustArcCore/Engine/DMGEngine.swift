@@ -182,6 +182,12 @@ public struct DMGEngine: ArchiveEngine {
     }
 
     /// Recursive copy that reports progress per file and honours the overwrite mode.
+    ///
+    /// A folder merges into a folder of the same name that is already there; the
+    /// overwrite mode is a rule for files, applied to each file inside. Nothing that
+    /// exists is ever removed to make room for a folder, and a folder is never removed
+    /// to make room for a file.
+    ///
     /// Files and symlinks go through copyItem, which preserves permissions, extended
     /// attributes and resource forks; directories are recreated and given the source's
     /// metadata afterwards.
@@ -193,47 +199,72 @@ public struct DMGEngine: ArchiveEngine {
         if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
         let fm = FileManager.default
 
-        guard let target = try resolveCollision(target: proposedTarget, overwrite: overwrite) else {
-            counter.skip(Self.recursiveSize(of: source))
-            return
-        }
-
         let values = try? source.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .fileSizeKey])
         let isSymlink = values?.isSymbolicLink ?? false
         let isDirectory = !isSymlink && (values?.isDirectory ?? false)
 
         if isDirectory {
+            var target = proposedTarget
+            if PathSafety.itemExists(at: target), !Self.isRealDirectory(target) {
+                // A file where the folder should go. It stays; the folder goes beside it.
+                if overwrite == .skip {
+                    counter.skip(Self.recursiveSize(of: source))
+                    return
+                }
+                target = PathSafety.uniqueURL(for: target)
+            }
             try fm.createDirectory(at: target, withIntermediateDirectories: true)
             for child in topLevelChildren(of: source) {
                 try copy(from: child,
                          to: target.appendingPathComponent(child.lastPathComponent),
-                         overwrite: .overwrite,
+                         overwrite: overwrite,
                          counter: counter,
                          cancellation: cancellation)
             }
             Self.copyMetadata(from: source, to: target)
-        } else {
-            try fm.copyItem(at: source, to: target)
-            counter.advance(UInt64(values?.fileSize ?? 0), file: source.lastPathComponent)
+            return
         }
+
+        var target = proposedTarget
+        if PathSafety.itemExists(at: target) {
+            switch overwrite {
+            case .skip:
+                counter.skip(UInt64(values?.fileSize ?? 0))
+                return
+            case .renameNew:
+                target = PathSafety.uniqueURL(for: target)
+            case .renameExisting, .overwrite:
+                if Self.isRealDirectory(target) {
+                    throw ArchiveError.ioFailure(
+                        L("%@ was not extracted: a folder with the same name is in the way.",
+                          target.lastPathComponent))
+                }
+            }
+        }
+
+        // Copied under a temporary name first, so what is already there is only
+        // replaced by a complete file.
+        let temporary = target.deletingLastPathComponent()
+            .appendingPathComponent(".justarc-\(UUID().uuidString).part")
+        do {
+            try fm.copyItem(at: source, to: temporary)
+            if overwrite == .renameExisting, PathSafety.itemExists(at: target) {
+                try fm.moveItem(at: target, to: PathSafety.uniqueURL(for: target))
+            }
+            guard Darwin.rename(temporary.path, target.path) == 0 else {
+                throw ArchiveError.ioFailure(String(cString: strerror(errno)))
+            }
+        } catch {
+            try? fm.removeItem(at: temporary)
+            throw error
+        }
+        counter.advance(UInt64(values?.fileSize ?? 0), file: source.lastPathComponent)
     }
 
-    /// Returns the URL to write to, or nil when the item should be skipped.
-    private func resolveCollision(target: URL, overwrite: OverwriteMode) throws -> URL? {
-        let fm = FileManager.default
-        guard PathSafety.itemExists(at: target) else { return target }
-        switch overwrite {
-        case .overwrite:
-            try fm.removeItem(at: target)
-            return target
-        case .skip:
-            return nil
-        case .renameNew:
-            return PathSafety.uniqueURL(for: target)
-        case .renameExisting:
-            try fm.moveItem(at: target, to: PathSafety.uniqueURL(for: target))
-            return target
-        }
+    /// A directory that is not a symbolic link to one.
+    private static func isRealDirectory(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        return values?.isDirectory == true && values?.isSymbolicLink != true
     }
 
     // MARK: - Verifying
@@ -301,17 +332,11 @@ public struct DMGEngine: ArchiveEngine {
         progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
 
-    /// hdiutil takes a single source folder, so several items are gathered first.
-    /// Hard links keep that cheap when the items are on the same volume.
+    /// hdiutil takes a single source folder and puts its contents at the top of the
+    /// image, so the items are gathered into one, each under its own name. A single
+    /// folder is gathered too, or it would be dissolved into the image's root and no
+    /// longer be what the window showed. Hard links keep this cheap on one volume.
     private func stage(items: [URL]) throws -> StagingFolder {
-        if items.count == 1 {
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: items[0].path, isDirectory: &isDirectory),
-               isDirectory.boolValue {
-                return StagingFolder(folder: items[0], ownsFolder: false)
-            }
-        }
-
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("justarc-dmg-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -320,6 +345,7 @@ public struct DMGEngine: ArchiveEngine {
             do {
                 try FileManager.default.linkItem(at: item, to: target)
             } catch {
+                try? FileManager.default.removeItem(at: target)
                 try FileManager.default.copyItem(at: item, to: target)
             }
         }
@@ -369,7 +395,10 @@ public struct DMGEngine: ArchiveEngine {
            existing.mountPoints.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) {
             return existing
         }
-        _ = DMGMountRegistry.shared.forget(archive)
+        if let stale = DMGMountRegistry.shared.forget(archive) {
+            // Its mount points are gone, but the device may still be attached.
+            Self.detachSynchronously(stale)
+        }
 
         let encrypted = try await Self.isEncrypted(archive: archive)
         if encrypted, password == nil || password!.isEmpty {
@@ -399,6 +428,11 @@ public struct DMGEngine: ArchiveEngine {
         let (devEntry, mountPoints) = Self.parseAttachOutput(result.standardOutput)
         Diagnostics.log("attached \(archive.lastPathComponent): dev=\(devEntry ?? "nil") mounts=\(mountPoints.map(\.path))")
         guard let devEntry, !mountPoints.isEmpty else {
+            // Attached but with nothing mounted: it must still be given back, or the
+            // device stays attached and, being hidden from the Finder, unnoticed.
+            if let devEntry {
+                Self.detachSynchronously(MountedImage(devEntry: devEntry, mountPoints: [], mountRoot: mountRoot))
+            }
             try? FileManager.default.removeItem(at: mountRoot)
             throw ArchiveError.engineFailed(
                 code: 0,

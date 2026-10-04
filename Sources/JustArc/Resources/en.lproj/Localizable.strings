@@ -4,11 +4,15 @@
 
 " — Edited" = " — Edited";
 " — packed %@" = " — packed %@";
+"%@ already exists in the archive." = "%@ already exists in the archive.";
 "%@ could not be extracted." = "%@ could not be extracted.";
+"%@ could not be moved to the Trash, so it was left as it is. %@" = "%@ could not be moved to the Trash, so it was left as it is. %@";
 "%@ expands to a very large amount of data." = "%@ expands to a very large amount of data.";
+"%@ expands to more than this Mac has room for, so it was not opened." = "%@ expands to more than this Mac has room for, so it was not opened.";
 "%@ file" = "%@ file";
 "%@ has no mountable file systems." = "%@ has no mountable file systems.";
 "%@ holds a single file. Choose one file, or save as TAR + %@ instead." = "%@ holds a single file. Choose one file, or save as TAR + %@ instead.";
+"%@ is a file in this archive, not a folder." = "%@ is a file in this archive, not a folder.";
 "%@ is empty." = "%@ is empty.";
 "%@ is not a volume size." = "%@ is not a volume size.";
 "%@ is not an executable." = "%@ is not an executable.";
@@ -16,8 +20,10 @@
 "%@ is protected. Enter its password to continue." = "%@ is protected. Enter its password to continue.";
 "%@ is stored in %@ and has not been downloaded to this Mac. Open it in Finder to download it, and check that %@ is running." = "%@ is stored in %@ and has not been downloaded to this Mac. Open it in Finder to download it, and check that %@ is running.";
 "%@ was edited outside JustArc." = "%@ was edited outside JustArc.";
+"%@ was not extracted: a folder with the same name is in the way." = "%@ was not extracted: a folder with the same name is in the way.";
 "%@ was not found after extraction." = "%@ was not found after extraction.";
 "%@ was not found." = "%@ was not found.";
+"%@ was not written." = "%@ was not written.";
 "%d files opened from this archive were edited outside JustArc." = "%d files opened from this archive were edited outside JustArc.";
 "%d folders already exist in “%@”." = "%d folders already exist in “%@”.";
 "%d items already exist in “%@”." = "%d items already exist in “%@”.";

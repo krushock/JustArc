@@ -17,4 +17,17 @@ public enum MacMetadata {
         }
         return false
     }
+
+    /// The item a piece of metadata belongs to: "Docs/._a.txt" and
+    /// "__MACOSX/Docs/._a.txt" both describe "Docs/a.txt". Nil for something that is
+    /// not metadata, or is the `__MACOSX` folder itself.
+    public static func itemDescribed(by path: String) -> String? {
+        guard isMetadata(path: path) else { return nil }
+        var components = path.split(separator: "/").map(String.init)
+        components.removeAll { $0 == "__MACOSX" }
+        guard var last = components.popLast() else { return nil }
+        if last.hasPrefix("._") { last.removeFirst(2) }
+        guard !last.isEmpty else { return nil }
+        return (components + [last]).joined(separator: "/")
+    }
 }

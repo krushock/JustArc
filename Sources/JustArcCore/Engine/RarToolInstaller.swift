@@ -125,27 +125,28 @@ public enum RarToolInstaller {
             throw InstallerError.toolMissingFromArchive
         }
 
-        let destination = EngineLocator.managedRARDirectory
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try FileManager.default.moveItem(at: unpacked, to: destination)
-
-        let tool = destination.appendingPathComponent("rar")
         for name in ["rar", "unrar", "default.sfx"] {
-            let item = destination.appendingPathComponent(name)
+            let item = unpacked.appendingPathComponent(name)
             guard FileManager.default.fileExists(atPath: item.path) else { continue }
             try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: item.path)
         }
 
-        // Prove it actually runs before reporting success.
-        let banner = try await ProcessRunner.run(executable: tool, arguments: [])
+        // Prove the new copy runs before the working one is given up for it.
+        let banner = try await ProcessRunner.run(executable: toolInStaging, arguments: [])
         guard let version = version(fromBanner: banner.combined) else {
             throw InstallerError.toolDidNotRun(banner.combined.prefix(200).description)
         }
 
+        let destination = EngineLocator.managedRARDirectory
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            _ = try FileManager.default.replaceItemAt(destination, withItemAt: unpacked)
+        } else {
+            try FileManager.default.moveItem(at: unpacked, to: destination)
+        }
+
+        let tool = destination.appendingPathComponent("rar")
         // Clear any stale override so the freshly installed copy is the one used.
         UserDefaults.standard.removeObject(forKey: "RARToolPath")
         progress(1)

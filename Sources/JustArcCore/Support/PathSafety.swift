@@ -6,15 +6,19 @@ public enum PathSafety {
     public static let defaultMaxEntryCount = 500_000
 
     /// Rejects absolute paths, "..", home-relative paths and Windows drive prefixes.
+    /// Names that merely start with a tilde, such as Office's "~$Report.docx" lock
+    /// files, and names with a colon in second place, which is how the Finder's
+    /// "A/B" is spelled on disk, are ordinary names and pass.
     /// The raw string is inspected first, because normalising strips the leading slash
     /// that makes a path absolute.
     public static func isSafe(entryPath: String) -> Bool {
         let raw = entryPath.replacingOccurrences(of: "\\", with: "/")
         if raw.isEmpty { return false }
         if raw.hasPrefix("/") { return false }
-        if raw.hasPrefix("~") { return false }
+        if raw == "~" || raw.hasPrefix("~/") { return false }
         let characters = Array(raw)
-        if characters.count > 1, characters[1] == ":", characters[0].isLetter { return false }
+        if characters.count > 1, characters[1] == ":", characters[0].isLetter,
+           characters.count == 2 || characters[2] == "/" { return false }
 
         let normalized = ArchivePath.normalize(raw)
         if normalized.isEmpty { return false }

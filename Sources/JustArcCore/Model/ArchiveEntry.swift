@@ -62,15 +62,25 @@ extension ArchiveEntry {
     }
 }
 
+extension UInt64 {
+    /// Addition that stops at the maximum instead of trapping.
+    func addingSaturating(_ other: UInt64) -> UInt64 {
+        let (sum, overflow) = addingReportingOverflow(other)
+        return overflow ? .max : sum
+    }
+}
+
 public enum ArchivePath {
     /// Collapses separators and strips leading "./" and "/" so paths are archive-relative.
+    ///
+    /// "." components are dropped wherever they are. `tar czf x.tgz .` stores an entry
+    /// named "./", and treated as a name that would be the destination folder itself:
+    /// something that "already exists" and that Replace would then delete.
     public static func normalize(_ raw: String) -> String {
-        var s = raw.replacingOccurrences(of: "\\", with: "/")
-        while s.hasPrefix("./") { s.removeFirst(2) }
-        while s.hasPrefix("/") { s.removeFirst() }
-        while s.hasSuffix("/") { s.removeLast() }
-        while s.contains("//") { s = s.replacingOccurrences(of: "//", with: "/") }
-        return s
+        raw.replacingOccurrences(of: "\\", with: "/")
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .filter { $0 != "." }
+            .joined(separator: "/")
     }
 
     public static func join(_ parent: String, _ child: String) -> String {
@@ -115,8 +125,9 @@ public struct ArchiveListing: Sendable {
         info.hasEncryptedHeader || entries.contains { $0.isEncrypted }
     }
 
-    public var totalSize: UInt64 { entries.reduce(0) { $0 + $1.size } }
-    public var totalPacked: UInt64 { entries.reduce(0) { $0 + $1.packedSize } }
+    // An archive can declare any sizes it likes, so the sums must not overflow.
+    public var totalSize: UInt64 { entries.reduce(0) { $0.addingSaturating($1.size) } }
+    public var totalPacked: UInt64 { entries.reduce(0) { $0.addingSaturating($1.packedSize) } }
     public var fileCount: Int { entries.filter { !$0.isDirectory }.count }
     public var folderCount: Int { entries.filter(\.isDirectory).count }
 }

@@ -40,12 +40,12 @@ public enum Formatting {
     }
 
     public static func percent(_ value: Double) -> String {
-        "\(Int((value * 100).rounded()))%"
+        "\(Int((min(max(value, 0), 1_000_000) * 100).rounded()))%"
     }
 
     public static func ratio(size: UInt64, packed: UInt64) -> String {
         guard size > 0 else { return "" }
-        return "\(Int((Double(packed) / Double(size) * 100).rounded()))%"
+        return "\(Int((min(Double(packed) / Double(size), 1_000_000) * 100).rounded()))%"
     }
 
     public static func duration(_ seconds: TimeInterval) -> String {

@@ -80,6 +80,8 @@ public enum CloudFile {
         do {
             try await coordinatedRead(url, cancellation: cancellation)
         } catch {
+            // Stopping the download is the user's doing, not something to report.
+            if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
             throw notDownloadedError(url, status: before, reason: error.localizedDescription)
         }
 

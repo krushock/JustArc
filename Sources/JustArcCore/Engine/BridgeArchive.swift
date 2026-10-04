@@ -244,13 +244,22 @@ final class BridgeProgress: @unchecked Sendable {
     /// several bridge calls such as unwrapping a .tar.gz before extracting it.
     private let offset: Double
     private let span: Double
+    /// Consulted on every report; answering false stops the operation, as a cancel does.
+    private let guardian: (() -> Bool)?
 
     init(handler: ProgressHandler?, cancellation: CancellationToken?,
-         offset: Double = 0, span: Double = 1) {
+         offset: Double = 0, span: Double = 1, guardian: (() -> Bool)? = nil) {
         self.handler = handler
         self.cancellation = cancellation
         self.offset = offset
         self.span = span
+        self.guardian = guardian
+    }
+
+    /// The same progress, stopped as soon as `check` answers false.
+    func guarded(by check: @escaping () -> Bool) -> BridgeProgress {
+        BridgeProgress(handler: handler, cancellation: cancellation, offset: offset, span: span,
+                       guardian: check)
     }
 
     /// A progress for the slice `offset..<offset + span` of the same operation.
@@ -265,6 +274,7 @@ final class BridgeProgress: @unchecked Sendable {
 
     func report(completed: UInt64, total: UInt64, path: UnsafePointer<CChar>?) -> Bool {
         if cancellation?.isCancelled == true { return false }
+        if let guardian, !guardian() { return false }
         guard let handler else { return true }
 
         let now = ProcessInfo.processInfo.systemUptime

@@ -116,8 +116,10 @@ final class DMGEngineTests: XCTestCase {
     private func makeImage(named name: String, password: String? = nil, level: Int = 1) async throws -> (URL, URL) {
         let root = try makeSourceTree()
         let image = root.deletingLastPathComponent().appendingPathComponent(name)
+        // Each item keeps its own name at the top of the image, as in any other format.
+        let items = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
         try await engine.create(archive: image,
-                                items: [root],
+                                items: items,
                                 options: CompressionOptions(formatKey: "dmg", level: level,
                                                             password: password))
         return (root, image)

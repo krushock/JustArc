@@ -46,13 +46,17 @@ final class RarEngineArgumentTests: XCTestCase {
                                          encryptFileNames: false, volumeSize: "100m",
                                          excludeMacMetadata: true)
         let arguments = RarEngine.addArguments(archive: URL(fileURLWithPath: "/tmp/a.rar"),
-                                               names: ["payload"], options: options)
+                                               listFile: URL(fileURLWithPath: "/tmp/names.lst"),
+                                               options: options)
         XCTAssertEqual(arguments.first, "a")
         XCTAssertTrue(arguments.contains("-m5"))
         XCTAssertTrue(arguments.contains("-psesame"))
         XCTAssertTrue(arguments.contains("-v100m"))
         XCTAssertTrue(arguments.contains("-x*.DS_Store"))
-        XCTAssertEqual(arguments.last, "payload")
+        // Names travel in a list file, after "--", so none can be read as a switch.
+        XCTAssertEqual(arguments.last, "@/tmp/names.lst")
+        XCTAssertFalse(arguments.contains("-r"))
+        XCTAssertTrue(arguments.contains("--"))
         XCTAssertTrue(arguments.contains("/tmp/a.rar"))
     }
 

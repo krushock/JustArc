@@ -21,7 +21,11 @@ public struct SevenZipEngine: ArchiveEngine {
                 info.physicalSize = outer.info.physicalSize
             }
             // macOS's own bookkeeping is left out; see `MacMetadata`.
-            let entries = readable.bridge.entries().filter { !MacMetadata.isMetadata(path: $0.path) }
+            // An entry named "." or "./", which tar writes for the folder it was run
+            // in, normalises to no name at all and stands for nothing extractable.
+            let entries = readable.bridge.entries().filter {
+                !$0.path.isEmpty && !MacMetadata.isMetadata(path: $0.path)
+            }
             return ArchiveListing(info: info, entries: entries)
         }
     }
@@ -118,7 +122,7 @@ public struct SevenZipEngine: ArchiveEngine {
             let scratch = try Scratch(beside: archive)
             defer { scratch.remove() }
 
-            let output = scratch.file("output")
+            let output = scratch.file("justarc-output")
             if let compressor = recipe.compressor {
                 if recipe.container == nil {
                     // A bare compressor holds exactly one file.
@@ -133,7 +137,7 @@ public struct SevenZipEngine: ArchiveEngine {
                                              progress: whole)
                 } else {
                     // tar first, then compress the tar.
-                    let tar = scratch.file(Self.innerTarName(for: archive))
+                    let tar = try scratch.file(Self.innerTarName(for: archive), inSubfolder: "tar")
                     try BridgeArchive.create(added: added, to: tar,
                                              settings: recipe.settings(options, formatName: "tar"),
                                              progress: whole.slice(offset: 0, span: 0.5))
@@ -181,8 +185,19 @@ public struct SevenZipEngine: ArchiveEngine {
         try await rewrite(archive, password: options.password, options: options,
                           cancellation: cancellation, progress: progress) { bridge in
             let added = try Self.collect(items, into: folder, excludeMacMetadata: options.excludeMacMetadata)
+            let existing = bridge.indices()
+            if !folder.isEmpty,
+               let blocker = existing.first(where: { $0.path == folder }),
+               bridge.item(blocker.index)?.isDirectory == false {
+                throw ArchiveError.ioFailure(L("%@ is a file in this archive, not a folder.", folder))
+            }
+            // What is added replaces what has the same path, and a file replaces a
+            // whole folder of that name, so no path ends up in the archive twice.
             let replaced = Set(added.map(\.archivePath))
-            let removed = bridge.indices().filter { replaced.contains($0.path) }.map(\.index)
+            let replacedByFiles = added.filter { !Self.isDirectory($0.diskURL) }.map { $0.archivePath + "/" }
+            let removed = existing.filter { item in
+                replaced.contains(item.path) || replacedByFiles.contains { item.path.hasPrefix($0) }
+            }.map(\.index)
             return Edit(removed: removed, renames: [], added: added)
         }
     }
@@ -190,7 +205,7 @@ public struct SevenZipEngine: ArchiveEngine {
     public func delete(entries: [ArchiveEntry], from archive: URL, password: String?) async throws {
         guard !entries.isEmpty else { return }
         try await rewrite(archive, password: password, options: nil) { bridge in
-            Edit(removed: Self.indices(of: entries, in: bridge), renames: [], added: [])
+            Edit(removed: Self.indices(of: entries, in: bridge, withMacMetadata: true), renames: [], added: [])
         }
     }
 
@@ -202,12 +217,21 @@ public struct SevenZipEngine: ArchiveEngine {
         guard from != to else { return }
 
         try await rewrite(archive, password: password, options: nil) { bridge in
-            let renames = bridge.indices().compactMap { item -> (index: UInt32, path: String)? in
+            let items = bridge.indices()
+            let renames = items.compactMap { item -> (index: UInt32, path: String)? in
                 if item.path == from { return (item.index, to) }
                 if item.path.hasPrefix(from + "/") {
                     return (item.index, to + item.path.dropFirst(from.count))
                 }
                 return nil
+            }
+            // Two items with one path cannot be told apart afterwards: the list shows
+            // one, and deleting it removes both.
+            let moving = Set(renames.map(\.index))
+            let taken = items.contains { !moving.contains($0.index) && ($0.path == to || $0.path.hasPrefix(to + "/")) }
+            if taken {
+                throw ArchiveError.ioFailure(
+                    L("%@ already exists in the archive.", (to as NSString).lastPathComponent))
             }
             return Edit(removed: [], renames: renames, added: [])
         }
@@ -275,11 +299,11 @@ public struct SevenZipEngine: ArchiveEngine {
 
             let scratch = try Scratch(beside: archive)
             defer { scratch.remove() }
-            let output = scratch.file("output")
+            let output = scratch.file("justarc-output")
 
             if let outer = readable.outer {
                 // Rewrite the tar, then compress it again the way it was compressed.
-                let tar = scratch.file(outer.innerName)
+                let tar = try scratch.file(outer.innerName, inSubfolder: "tar")
                 try readable.bridge.write(removed: changes.removed, renames: changes.renames,
                                           added: changes.added, to: tar, settings: settings,
                                           progress: whole.slice(offset: 0.3, span: 0.4))
@@ -296,8 +320,9 @@ public struct SevenZipEngine: ArchiveEngine {
             }
             try Self.place(output, at: archive)
         }
+        // No check for cancellation here: by now the archive has been replaced, and
+        // reporting a cancel would leave the window showing what is no longer there.
         NestedTarCache.shared.forget(archive)
-        if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
         progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
 
@@ -315,17 +340,26 @@ public struct SevenZipEngine: ArchiveEngine {
 
     /// The indices behind `entries`, with everything inside the folders among them.
     /// Folders the browser shows but the archive never stored are covered too.
-    static func indices(of entries: [ArchiveEntry], in bridge: BridgeArchive) -> [UInt32] {
+    /// - Parameter withMacMetadata: also take the `._name` and `__MACOSX` companions
+    ///   of what was asked for. Extraction leaves them behind; deletion must not, or
+    ///   the names of deleted files stay in an archive that looks clean.
+    static func indices(of entries: [ArchiveEntry], in bridge: BridgeArchive,
+                        withMacMetadata: Bool = false) -> [UInt32] {
         let wanted = Set(entries.map(\.path))
-        return bridge.indices().filter { item in
-            if wanted.contains(item.path) { return true }
-            if MacMetadata.isMetadata(path: item.path) { return false }
-            var parent = Substring(item.path)
+        func isWanted(_ path: String) -> Bool {
+            if wanted.contains(path) { return true }
+            var parent = Substring(path)
             while let slash = parent.lastIndex(of: "/") {
                 parent = parent[..<slash]
                 if wanted.contains(String(parent)) { return true }
             }
             return false
+        }
+        return bridge.indices().filter { item in
+            if wanted.contains(item.path) { return true }
+            guard MacMetadata.isMetadata(path: item.path) else { return isWanted(item.path) }
+            guard withMacMetadata, let described = MacMetadata.itemDescribed(by: item.path) else { return false }
+            return isWanted(described)
         }.map(\.index)
     }
 
@@ -363,7 +397,10 @@ public struct SevenZipEngine: ArchiveEngine {
                                     diskURL: item.appendingPathComponent(relative)))
             }
         }
-        return result
+        // Two items of the same name, from different folders, would otherwise be
+        // stored under one path. The later one wins, as it would in the Finder.
+        var seen = Set<String>()
+        return result.reversed().filter { seen.insert($0.archivePath).inserted }.reversed()
     }
 
     private static func isMacMetadata(_ name: String) -> Bool {
@@ -420,8 +457,20 @@ public struct SevenZipEngine: ArchiveEngine {
                 written += UInt64(data.count)
             }
             try handle?.close()
-            guard handle != nil, written == volumeBytes else { break }
+            guard handle != nil, written == volumeBytes else {
+                if handle == nil { part -= 1 }
+                break
+            }
             part += 1
+        }
+
+        // Volumes left from an earlier, larger save would be read as part of this one.
+        var stale = part + 1
+        while true {
+            let volume = URL(fileURLWithPath: archive.path + String(format: ".%03d", stale))
+            guard PathSafety.itemExists(at: volume) else { break }
+            try? FileManager.default.removeItem(at: volume)
+            stale += 1
         }
     }
 
@@ -439,7 +488,11 @@ public struct SevenZipEngine: ArchiveEngine {
         guard let count = UInt64(digits), count > 0 else {
             throw ArchiveError.ioFailure(L("%@ is not a volume size.", spec))
         }
-        return count * multiplier
+        let (bytes, overflow) = count.multipliedReportingOverflow(by: multiplier)
+        guard !overflow else {
+            throw ArchiveError.ioFailure(L("%@ is not a volume size.", spec))
+        }
+        return bytes
     }
 }
 
@@ -470,6 +523,46 @@ private struct Readable {
             return Readable(bridge: bridge, outer: nil, didUnwrap: false)
         }
         return Readable(bridge: unwrapped.tar, outer: unwrapped.outer, didUnwrap: true)
+    }
+}
+
+/// Watches a folder being written into and says when it has grown too large.
+final class GrowthLimiter: @unchecked Sendable {
+    private let folder: URL
+    private let limit: UInt64
+    private let lock = NSLock()
+    private var lastCheck: TimeInterval = 0
+    private var hasTripped = false
+
+    init(folder: URL, ceiling: UInt64 = PathSafety.defaultMaxExpandedBytes) {
+        self.folder = folder
+        // Leave the disk a margin: a full startup volume makes everything else fail.
+        let free = (try? folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            .volumeAvailableCapacityForImportantUsage).map { UInt64(max($0, 0)) } ?? ceiling
+        let margin: UInt64 = 1 << 30
+        limit = min(ceiling, free > margin ? free - margin : 0)
+    }
+
+    var tripped: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return hasTripped
+    }
+
+    /// Cheap to call often: the folder is only measured a few times a second.
+    func allowsMore() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if hasTripped { return false }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastCheck >= 0.25 else { return true }
+        lastCheck = now
+
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        let size = files.reduce(UInt64(0)) { total, file in
+            total.addingSaturating(UInt64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0))
+        }
+        if size > limit { hasTripped = true }
+        return !hasTripped
     }
 }
 
@@ -539,9 +632,20 @@ final class NestedTarCache: @unchecked Sendable {
         let folder = root.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
+        // The stream says nothing reliable about how large it will grow, and a few
+        // megabytes can expand to more than the disk holds, so the growing file is
+        // watched and the work stopped before it gets there.
+        let limiter = GrowthLimiter(folder: folder)
         do {
-            try outer.extract(indices: [0], destination: folder, password: nil, overwrite: .overwrite,
-                              flatten: true, testOnly: false, progress: progress)
+            do {
+                try outer.extract(indices: [0], destination: folder, password: nil, overwrite: .overwrite,
+                                  flatten: true, testOnly: false,
+                                  progress: progress.guarded(by: limiter.allowsMore))
+            } catch where limiter.tripped {
+                throw ArchiveError.ioFailure(
+                    L("%@ expands to more than this Mac has room for, so it was not opened.",
+                      archive.lastPathComponent))
+            }
             guard let produced = try FileManager.default.contentsOfDirectory(
                 at: folder, includingPropertiesForKeys: nil).first else {
                 throw ArchiveError.ioFailure(L("%@ was not found after extraction.", archive.lastPathComponent))
@@ -641,6 +745,14 @@ private struct Scratch {
     }
 
     func file(_ name: String) -> URL { folder.appendingPathComponent(name) }
+
+    /// A file in a folder of its own, for a name that comes from the archive and
+    /// could otherwise be the same as one of ours.
+    func file(_ name: String, inSubfolder subfolder: String) throws -> URL {
+        let directory = folder.appendingPathComponent(subfolder)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent(name)
+    }
 
     func remove() { try? FileManager.default.removeItem(at: folder) }
 }

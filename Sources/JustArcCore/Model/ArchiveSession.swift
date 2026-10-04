@@ -240,12 +240,15 @@ public final class ArchiveSession {
             throw ArchiveError.notWritable(destination.pathExtension.uppercased())
         }
 
+        // A split archive has no file of the name that was asked for; it is opened
+        // through its first volume.
+        var written = destination
         if sameFile, !rebuild, format.canEditInPlace, !listing.entries.isEmpty {
             try await saveInPlace(destination: destination, options: options,
                                   cancellation: cancellation, progress: progress)
         } else {
-            try await saveByRebuilding(destination: destination, options: options,
-                                       cancellation: cancellation, progress: progress)
+            written = try await saveByRebuilding(destination: destination, options: options,
+                                                 cancellation: cancellation, progress: progress)
             // A rewritten archive is protected by whatever was chosen for it, which
             // is what reading it back from here on needs.
             password = options.password?.isEmpty == false ? options.password : nil
@@ -256,7 +259,7 @@ public final class ArchiveSession {
         if let previous = archiveURL {
             EngineFactory.engine(for: previous).release(archive: previous)
         }
-        archiveURL = destination
+        archiveURL = written
         clearPendingChanges()
         try await load()
     }
@@ -351,30 +354,44 @@ public final class ArchiveSession {
     }
 
     /// Extracts the current archive to a scratch folder, applies the pending edits there,
-    /// then compresses the result into the destination format.
+    /// then compresses the result into the destination format. Returns the file to open
+    /// afterwards, which for a split archive is its first volume.
     @MainActor
     private func saveByRebuilding(destination: URL,
                                   options: CompressionOptions,
                                   cancellation: CancellationToken?,
-                                  progress: ProgressHandler?) async throws {
-        let scratch = FileManager.default.temporaryDirectory
+                                  progress: ProgressHandler?) async throws -> URL {
+        let fileManager = FileManager.default
+        let scratch = fileManager.temporaryDirectory
             .appendingPathComponent("justarc-save-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: scratch) }
+        try fileManager.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: scratch) }
 
         var roots: [URL] = []
 
         if let archiveURL, !listing.entries.isEmpty {
-            let keep = listing.entries.filter { !pendingDeletions.contains($0.path) && !$0.isDirectory }
+            // Files, and the folders that hold none: an empty folder is content too,
+            // and would otherwise be lost on the way through.
+            let files = listing.entries.filter { !pendingDeletions.contains($0.path) && !$0.isDirectory }
+            let occupied = Set(files.flatMap { Self.ancestors(of: $0.path) })
+            let emptyFolders = listing.entries.filter {
+                $0.isDirectory && !pendingDeletions.contains($0.path) && !occupied.contains($0.path)
+            }
+            let keep = files + emptyFolders
             if !keep.isEmpty {
                 let sourceEngine = EngineFactory.engine(for: archiveURL)
                 try await sourceEngine.extract(archive: archiveURL, entries: keep, to: scratch,
                                                password: password, overwrite: .overwrite,
                                                flattenPaths: false, cancellation: cancellation,
                                                progress: progress)
-                let contents = try FileManager.default.contentsOfDirectory(
-                    at: scratch, includingPropertiesForKeys: nil)
-                roots.append(contentsOf: contents)
+                // Asking for a folder brings everything in it, deleted items included.
+                for path in pendingDeletions {
+                    if let removed = try? PathSafety.resolvedURL(for: path, in: scratch) {
+                        try? fileManager.removeItem(at: removed)
+                    }
+                }
+                roots.append(contentsOf: try fileManager.contentsOfDirectory(
+                    at: scratch, includingPropertiesForKeys: nil))
             }
         }
 
@@ -387,8 +404,13 @@ public final class ArchiveSession {
             throw ArchiveError.ioFailure(L("There is nothing to save. Add files to the archive first."))
         }
 
-        let temporaryArchive = scratch.deletingLastPathComponent()
-            .appendingPathComponent("justarc-out-\(UUID().uuidString)-\(destination.lastPathComponent)")
+        // The new archive is built under its real name in a folder of its own, on the
+        // destination's volume: the name is what a disk image is titled after and
+        // what split volumes are numbered from, and the volume is what lets the
+        // finished file take the old one's place in a single step.
+        let building = try Self.buildFolder(for: destination)
+        defer { try? fileManager.removeItem(at: building) }
+        let temporaryArchive = building.appendingPathComponent(destination.lastPathComponent)
         let destinationEngine = EngineFactory.engine(for: destination)
 
         // A disk image is built in one go from a folder and cannot be added to
@@ -399,20 +421,109 @@ public final class ArchiveSession {
             nested = []
         }
 
+        // Volumes are cut once the archive is complete, so everything is added first.
+        var whole = options
+        whole.volumeSize = nested.isEmpty ? options.volumeSize : nil
         if !roots.isEmpty {
-            try await destinationEngine.create(archive: temporaryArchive, items: roots, options: options,
+            try await destinationEngine.create(archive: temporaryArchive, items: roots, options: whole,
                                                cancellation: cancellation, progress: progress)
         }
-        for group in nested {
+        for (index, group) in nested.enumerated() {
+            var step = options
+            step.volumeSize = nil
             try await destinationEngine.add(items: group.items, to: temporaryArchive, into: group.folder,
-                                            options: options, cancellation: cancellation, progress: progress)
+                                            options: step, cancellation: cancellation, progress: progress)
+            if index == nested.count - 1, let size = options.volumeSize, !size.isEmpty {
+                try Self.splitInPlace(temporaryArchive, volumeSize: size)
+            }
         }
 
-        if FileManager.default.fileExists(atPath: destination.path) {
-            _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporaryArchive)
-        } else {
-            try FileManager.default.moveItem(at: temporaryArchive, to: destination)
+        return try Self.place(builtIn: building, named: destination.lastPathComponent, at: destination)
+    }
+
+    /// Every folder path above `path`: "a/b/c.txt" gives ["a", "a/b"].
+    private static func ancestors(of path: String) -> [String] {
+        var result: [String] = []
+        var current = Substring(path)
+        while let slash = current.lastIndex(of: "/") {
+            current = current[..<slash]
+            result.append(String(current))
         }
+        return result
+    }
+
+    private static func buildFolder(for destination: URL) throws -> URL {
+        let fileManager = FileManager.default
+        if let folder = try? fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask,
+                                             appropriateFor: destination.deletingLastPathComponent(),
+                                             create: true) {
+            return folder
+        }
+        let folder = fileManager.temporaryDirectory.appendingPathComponent("justarc-build-\(UUID().uuidString)")
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    private static func splitInPlace(_ archive: URL, volumeSize: String) throws {
+        guard let bytes = try SevenZipEngine.volumeBytes(volumeSize) else { return }
+        let whole = archive.deletingLastPathComponent().appendingPathComponent("justarc-whole")
+        try FileManager.default.moveItem(at: archive, to: whole)
+        defer { try? FileManager.default.removeItem(at: whole) }
+        try SevenZipEngine.split(whole, into: archive, volumeBytes: bytes)
+    }
+
+    /// Moves what was built into the destination's folder and returns the file to
+    /// open. An engine asked to split writes volumes instead of the one file:
+    /// "name.7z.001" and so on from 7-Zip, "name.part1.rar" from RAR.
+    private static func place(builtIn building: URL, named name: String, at destination: URL) throws -> URL {
+        let fileManager = FileManager.default
+        let built = building.appendingPathComponent(name)
+        if fileManager.fileExists(atPath: built.path) {
+            if PathSafety.itemExists(at: destination) {
+                _ = try fileManager.replaceItemAt(destination, withItemAt: built)
+            } else {
+                try fileManager.moveItem(at: built, to: destination)
+            }
+            return destination
+        }
+
+        let volumes = try fileManager.contentsOfDirectory(at: building, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent != "justarc-whole" }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        guard let first = volumes.first else {
+            throw ArchiveError.ioFailure(L("%@ was not written.", name))
+        }
+        let folder = destination.deletingLastPathComponent()
+
+        // Volumes from an earlier save of this name would be read as part of the
+        // new set if it has fewer of them.
+        let produced = Set(volumes.map(\.lastPathComponent))
+        for existing in (try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        where isVolume(existing.lastPathComponent, of: name) && !produced.contains(existing.lastPathComponent) {
+            try? fileManager.removeItem(at: existing)
+        }
+        for volume in volumes {
+            let target = folder.appendingPathComponent(volume.lastPathComponent)
+            if PathSafety.itemExists(at: target) {
+                _ = try fileManager.replaceItemAt(target, withItemAt: volume)
+            } else {
+                try fileManager.moveItem(at: volume, to: target)
+            }
+        }
+        return folder.appendingPathComponent(first.lastPathComponent)
+    }
+
+    /// True for "name.7z.001"-style and "name.part1.rar"-style volumes of `name`.
+    static func isVolume(_ candidate: String, of name: String) -> Bool {
+        if candidate.hasPrefix(name + ".") {
+            let suffix = candidate.dropFirst(name.count + 1)
+            if !suffix.isEmpty, suffix.allSatisfy(\.isNumber) { return true }
+        }
+        let stem = (name as NSString).deletingPathExtension
+        let ext = (name as NSString).pathExtension
+        guard !ext.isEmpty, candidate.hasPrefix(stem + ".part"), candidate.hasSuffix("." + ext) else { return false }
+        let middle = candidate.dropFirst(stem.count + 5).dropLast(ext.count + 1)
+        return !middle.isEmpty && middle.allSatisfy(\.isNumber)
     }
 
     /// Copies everything into one folder tree shaped like the archive, and returns
