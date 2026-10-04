@@ -146,8 +146,48 @@ def write(language, keys, translations, untranslated):
     path.write_text("".join(lines), encoding="utf-8")
 
 
+SPECIFIER = re.compile(r"%(?:(\d+)\$)?[-+ 0#]*\d*(?:\.\d+)?(l{0,2}[dDuUxXfFeEgGcCsS@])|%%")
+
+
+def argument_types(text):
+    """The type each argument must have, in argument order, or None if inconsistent.
+
+    A translation may reorder its arguments, but only with positional specifiers
+    such as %2$@. Reordering plain ones makes String(format:) read an integer as an
+    object pointer, which crashes.
+    """
+    plain, positional = [], {}
+    for match in SPECIFIER.finditer(text):
+        if match.group(0) == "%%":
+            continue
+        kind = match.group(2).lstrip("l").lower()
+        if match.group(1):
+            positional[int(match.group(1))] = kind
+        else:
+            plain.append(kind)
+    if positional and plain:
+        return None
+    if positional:
+        if sorted(positional) != list(range(1, len(positional) + 1)):
+            return None
+        return [positional[index] for index in sorted(positional)]
+    return plain
+
+
+def check_format_arguments(language, translations):
+    problems = []
+    for key, value in translations.items():
+        if argument_types(value) != argument_types(key):
+            problems.append(key)
+    for key in problems:
+        print(f"   {language}: format arguments do not match the English for {key!r}:\n"
+              f"      {translations[key]!r}")
+    return not problems
+
+
 def main():
     keys = collect_keys()
+    consistent = True
     for language in LANGUAGES:
         existing, previously_untranslated = read_existing(language)
         if language == "en":
@@ -157,9 +197,13 @@ def main():
             missing = {k for k in keys if k not in existing} | (previously_untranslated & set(keys))
         stale = [k for k in existing if k not in keys]
         write(language, keys, existing, missing)
+        consistent &= check_format_arguments(language, {k: existing[k] for k in keys if k in existing})
         print(f"{language}: {len(keys)} keys, {len(missing)} untranslated, {len(stale)} dropped")
         for key in sorted(missing):
             print(f"   needs {language}: {key!r}")
+    if not consistent:
+        sys.exit("A translation takes its arguments in a different order or type. "
+                 "Use positional specifiers such as %1$d and %2$@.")
 
 
 if __name__ == "__main__":

@@ -615,16 +615,26 @@ private struct WriteRecipe {
     }
 }
 
-/// A private folder beside the archive for work in progress, so the finished file
-/// moves into place on the same volume in one step.
+/// A private folder for work in progress, on the archive's own volume so the finished
+/// file moves into place in one step.
+///
+/// The system's item-replacement directory is the first choice: it sits out of sight
+/// and is cleared by the system if the app dies midway. A hidden folder beside the
+/// archive is the fallback for volumes that have none.
 private struct Scratch {
     let folder: URL
 
     init(beside archive: URL) throws {
+        let fileManager = FileManager.default
         let parent = archive.deletingLastPathComponent()
+        if let replacement = try? fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask,
+                                                  appropriateFor: parent, create: true) {
+            folder = replacement
+            return
+        }
         folder = parent.appendingPathComponent(".justarc-\(UUID().uuidString)")
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {
             throw ArchiveError.ioFailure(L("JustArc cannot write to %@.", parent.path))
         }

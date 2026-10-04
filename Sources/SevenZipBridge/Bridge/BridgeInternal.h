@@ -20,6 +20,7 @@
 
 #include "SevenZipBridge.h"
 
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -130,18 +131,37 @@ bool NoLinkInParents(const std::string &root, const std::string &relative);
 /// Creates every folder in `path`.
 bool MakeDirectories(const std::string &path);
 
+/// The permission bits to give an extracted item: the archive's, less anything the
+/// user's umask withholds and less setuid, setgid and sticky, which an archive has no
+/// business granting. Returns false when the archive recorded nothing usable.
+bool UsablePermissions(UInt32 mode, mode_t &permissions);
+
 // MARK: - Progress
 
+/// Progress and cancellation for one operation.
+///
+/// 7-Zip decodes on several threads at once and reports from any of them, sometimes
+/// at the same moment as the thread that asks for the next file, so every access goes
+/// through the lock.
 struct Progress {
     SZProgressCallback callback = nullptr;
     void *context = nullptr;
+
+    void SetTotal(UInt64 value);
+    void SetCompleted(UInt64 value);
+    void SetCurrent(const std::string &path);
+    UInt64 Completed();
+    bool Cancelled();
+
+    /// Returns false once the caller has asked to cancel.
+    bool Report();
+
+private:
+    std::mutex lock;
     UInt64 total = 0;
     UInt64 completed = 0;
     std::string current;
     bool cancelled = false;
-
-    /// Returns false once the caller has asked to cancel.
-    bool Report();
 };
 
 }  // namespace SZBridge

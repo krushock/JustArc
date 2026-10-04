@@ -71,6 +71,9 @@ public final class ArchiveSession {
 
     // MARK: - Loading
 
+    /// Runs on the main actor so that the listing the window is reading is never
+    /// replaced from another thread; the engine's own work still happens off it.
+    @MainActor
     public func load(cancellation: CancellationToken? = nil,
                      progress: ProgressHandler? = nil) async throws {
         guard let archiveURL else {
@@ -87,8 +90,11 @@ public final class ArchiveSession {
     }
 
     /// Every row the browser should show: archive contents plus staged files,
-    /// minus anything queued for deletion.
-    public var visibleEntries: [ArchiveEntry] {
+    /// minus anything queued for deletion. Worked out once per change, since the
+    /// window asks for it on every selection change and toolbar validation.
+    public private(set) var visibleEntries: [ArchiveEntry] = []
+
+    private func computeVisibleEntries() -> [ArchiveEntry] {
         let existing = listing.entries.filter { !pendingDeletions.contains($0.path) }
         let staged = stagedEntries.filter { !pendingDeletions.contains($0.path) }
         var seen = Set<String>()
@@ -101,6 +107,7 @@ public final class ArchiveSession {
     }
 
     public func rebuild() {
+        visibleEntries = computeVisibleEntries()
         tree = EntryTree(entries: visibleEntries)
     }
 
@@ -122,13 +129,14 @@ public final class ArchiveSession {
             guard !stagedRoots.contains(standardized) else { continue }
             stagedRoots.append(standardized)
             if !folder.isEmpty { stagedFolders[standardized] = folder }
-            let produced = Self.enumerate(item: standardized).map { $0.moved(into: folder) }
-            for entry in produced {
-                stagedEntries.removeAll { $0.path == entry.path }
-                stagedEntries.append(entry)
-                pendingDeletions.remove(entry.path)
-            }
-            for (path, url) in Self.sourceMap(for: standardized) {
+            // One walk of the folder gives both the rows and where each came from.
+            let walked = Self.enumerate(item: standardized)
+            let produced = walked.map { $0.moved(into: folder) }
+            let replaced = Set(produced.map(\.path))
+            stagedEntries.removeAll { replaced.contains($0.path) }
+            stagedEntries.append(contentsOf: produced)
+            pendingDeletions.subtract(replaced)
+            for (path, url) in Self.sourceMap(for: standardized, entries: walked) {
                 stagedSources[ArchivePath.join(folder, path)] = url
             }
             added.append(contentsOf: produced)
@@ -204,6 +212,7 @@ public final class ArchiveSession {
         stagedEntries.removeAll()
         stagedSources.removeAll()
         pendingDeletions.removeAll()
+        rebuild()
     }
 
     // MARK: - Saving
@@ -211,8 +220,14 @@ public final class ArchiveSession {
     /// Writes the session to `destination`. When the destination is the currently open
     /// archive and the format allows it, pending changes are applied in place; otherwise
     /// a new archive is built from scratch.
+    ///
+    /// - Parameter rebuild: write the archive afresh even when the destination is the
+    ///   open archive. Save As asks for this, because the options chosen there, a
+    ///   password or a compression level, only take effect when everything is rewritten.
+    @MainActor
     public func save(to destination: URL,
                      options: CompressionOptions,
+                     rebuild: Bool = false,
                      cancellation: CancellationToken? = nil,
                      progress: ProgressHandler? = nil) async throws {
         defer {
@@ -225,12 +240,15 @@ public final class ArchiveSession {
             throw ArchiveError.notWritable(destination.pathExtension.uppercased())
         }
 
-        if sameFile, format.canEditInPlace, !listing.entries.isEmpty {
+        if sameFile, !rebuild, format.canEditInPlace, !listing.entries.isEmpty {
             try await saveInPlace(destination: destination, options: options,
                                   cancellation: cancellation, progress: progress)
         } else {
             try await saveByRebuilding(destination: destination, options: options,
                                        cancellation: cancellation, progress: progress)
+            // A rewritten archive is protected by whatever was chosen for it, which
+            // is what reading it back from here on needs.
+            password = options.password?.isEmpty == false ? options.password : nil
         }
 
         // Whatever the engine held for the previous file is stale now, whether we
@@ -243,6 +261,7 @@ public final class ArchiveSession {
         try await load()
     }
 
+    @MainActor
     private func saveInPlace(destination: URL,
                              options: CompressionOptions,
                              cancellation: CancellationToken?,
@@ -333,6 +352,7 @@ public final class ArchiveSession {
 
     /// Extracts the current archive to a scratch folder, applies the pending edits there,
     /// then compresses the result into the destination format.
+    @MainActor
     private func saveByRebuilding(destination: URL,
                                   options: CompressionOptions,
                                   cancellation: CancellationToken?,
@@ -457,11 +477,11 @@ public final class ArchiveSession {
         return results
     }
 
-    static func sourceMap(for item: URL) -> [String: URL] {
+    static func sourceMap(for item: URL, entries: [ArchiveEntry]? = nil) -> [String: URL] {
         var map: [String: URL] = [:]
         let base = item.lastPathComponent
         map[base] = item
-        for entry in enumerate(item: item) where entry.path != base {
+        for entry in entries ?? enumerate(item: item) where entry.path != base {
             let relative = String(entry.path.dropFirst(base.count + 1))
             map[entry.path] = item.appendingPathComponent(relative)
         }

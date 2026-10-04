@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -693,14 +694,60 @@ bool NoLinkInParents(const std::string &root, const std::string &relative) {
 
 bool MakeDirectories(const std::string &path) {
     if (path.empty() || IsDirectoryPath(path)) return true;
-    const size_t slash = path.find_last_of('/');
-    if (slash != std::string::npos && slash > 0 && !MakeDirectories(path.substr(0, slash))) return false;
-    return mkdir(path.c_str(), 0755) == 0 || IsDirectoryPath(path);
+    // Walks down from the top rather than recursing up from the bottom: an archive can
+    // name a path thousands of folders deep, and recursion that deep overflows the stack.
+    size_t position = 0;
+    while (position != std::string::npos) {
+        position = path.find('/', position + 1);
+        const std::string prefix = path.substr(0, position);
+        if (prefix.empty()) continue;
+        if (mkdir(prefix.c_str(), 0755) != 0 && errno != EEXIST && !IsDirectoryPath(prefix)) return false;
+    }
+    return IsDirectoryPath(path);
+}
+
+bool UsablePermissions(UInt32 mode, mode_t &permissions) {
+    // Zip entries written by tools that know nothing of Unix claim a mode of zero,
+    // which would leave the owner unable to read their own file.
+    if ((mode & 0777) == 0) return false;
+    static const mode_t mask = [] {
+        const mode_t current = umask(0);
+        umask(current);
+        return current;
+    }();
+    permissions = (mode_t)(mode & 0777) & ~mask;
+    return true;
 }
 
 // MARK: - Progress
 
+void Progress::SetTotal(UInt64 value) {
+    std::lock_guard<std::mutex> guard(lock);
+    total = value;
+}
+
+void Progress::SetCompleted(UInt64 value) {
+    std::lock_guard<std::mutex> guard(lock);
+    completed = value;
+}
+
+void Progress::SetCurrent(const std::string &path) {
+    std::lock_guard<std::mutex> guard(lock);
+    current = path;
+}
+
+UInt64 Progress::Completed() {
+    std::lock_guard<std::mutex> guard(lock);
+    return completed;
+}
+
+bool Progress::Cancelled() {
+    std::lock_guard<std::mutex> guard(lock);
+    return cancelled;
+}
+
 bool Progress::Report() {
+    std::lock_guard<std::mutex> guard(lock);
     if (cancelled) return false;
     if (!callback) return true;
     if (!callback(context, completed, total, current.c_str())) cancelled = true;

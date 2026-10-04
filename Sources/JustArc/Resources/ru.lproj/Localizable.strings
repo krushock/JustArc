@@ -19,8 +19,8 @@
 "%@ was not found after extraction." = "Файл %@ не найден после распаковки.";
 "%@ was not found." = "%@ не найден.";
 "%d files opened from this archive were edited outside JustArc." = "Файлов из этого архива изменено вне JustArc: %d.";
-"%d folders already exist in “%@”." = "В папке «%@» уже есть папок: %d.";
-"%d items already exist in “%@”." = "В папке «%@» уже есть объектов: %d.";
+"%d folders already exist in “%@”." = "В папке «%2$@» уже есть папок: %1$d.";
+"%d items already exist in “%@”." = "В папке «%2$@» уже есть объектов: %1$d.";
 "1 GB" = "1 ГБ";
 "100 MB" = "100 МБ";
 "4480 MB (DVD)" = "4480 МБ (DVD)";

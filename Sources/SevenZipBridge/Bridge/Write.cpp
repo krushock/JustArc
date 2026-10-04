@@ -58,9 +58,10 @@ struct Entry {
 class UpdateCallback Z7_final:
     public IArchiveUpdateCallback2,
     public ICryptoGetTextPassword2,
+    public ICryptoGetTextPassword,
     public CMyUnknownImp
 {
-    Z7_IFACES_IMP_UNK_2(IArchiveUpdateCallback2, ICryptoGetTextPassword2)
+    Z7_IFACES_IMP_UNK_3(IArchiveUpdateCallback2, ICryptoGetTextPassword2, ICryptoGetTextPassword)
     Z7_IFACE_COM7_IMP(IProgress)
     Z7_IFACE_COM7_IMP(IArchiveUpdateCallback)
 
@@ -71,6 +72,11 @@ public:
     bool linkTargetInHeader = false;
     UString password;
     bool hasPassword = false;
+    /// For reading the source: 7-Zip has to decode an encrypted solid block to take
+    /// one file out of it, and asks for the password it was written with.
+    UString sourcePassword;
+    bool hasSourcePassword = false;
+    bool sourcePasswordRequested = false;
     Progress progress;
 
     std::string failurePath;
@@ -78,12 +84,12 @@ public:
 };
 
 Z7_COM7F_IMF(UpdateCallback::SetTotal(UInt64 size)) {
-    progress.total = size;
+    progress.SetTotal(size);
     return progress.Report() ? S_OK : E_ABORT;
 }
 
 Z7_COM7F_IMF(UpdateCallback::SetCompleted(const UInt64 *value)) {
-    if (value) progress.completed = *value;
+    if (value) progress.SetCompleted(*value);
     return progress.Report() ? S_OK : E_ABORT;
 }
 
@@ -157,7 +163,7 @@ Z7_COM7F_IMF(UpdateCallback::GetStream(UInt32 index, ISequentialInStream **inStr
     *inStream = nullptr;
     const Entry &entry = (*entries)[index];
     if (entry.existing) return S_OK;
-    progress.current = Narrow(entry.path);
+    progress.SetCurrent(Narrow(entry.path));
     if (!progress.Report()) return E_ABORT;
     if (entry.info.IsDir()) return S_OK;
 
@@ -196,6 +202,22 @@ Z7_COM7F_IMF(UpdateCallback::GetVolumeStream(UInt32, ISequentialOutStream **)) {
 Z7_COM7F_IMF(UpdateCallback::CryptoGetTextPassword2(Int32 *passwordIsDefined, BSTR *result)) {
     *passwordIsDefined = hasPassword ? 1 : 0;
     return StringToBstr(hasPassword ? password : UString(), result);
+}
+
+Z7_COM7F_IMF(UpdateCallback::CryptoGetTextPassword(BSTR *result)) {
+    sourcePasswordRequested = true;
+    if (!hasSourcePassword) return E_ABORT;
+    return StringToBstr(sourcePassword, result);
+}
+
+bool SourceIsEncrypted(SZArchive *source) {
+    if (!source) return false;
+    UInt32 count = 0;
+    if (source->archive->GetNumberOfItems(&count) != S_OK) return false;
+    for (UInt32 index = 0; index < count; index++) {
+        if (GetBoolProperty(source->archive, index, kpidEncrypted)) return true;
+    }
+    return false;
 }
 
 bool Named(const Handler *handler, const wchar_t *name) {
@@ -339,6 +361,15 @@ extern "C" SZStatus sz_write(SZArchive *source,
         callbackSpec->password = Wide(options->password);
         callbackSpec->hasPassword = true;
     }
+    // The password the source was opened with reads it; failing that, the one the
+    // caller gave for writing, since an edited archive keeps its password.
+    if (source && source->hasPassword) {
+        callbackSpec->sourcePassword = source->password;
+        callbackSpec->hasSourcePassword = true;
+    } else if (encrypting) {
+        callbackSpec->sourcePassword = callbackSpec->password;
+        callbackSpec->hasSourcePassword = true;
+    }
 
     auto *outSpec = new COutFileStream;
     CMyComPtr<IOutStream> outStream = outSpec;
@@ -352,9 +383,21 @@ extern "C" SZStatus sz_write(SZArchive *source,
     outStream.Release();
 
     SZStatus status = SZStatusOK;
-    if (callbackSpec->progress.cancelled) {
+    if (callbackSpec->progress.Cancelled()) {
         Fail(error, SZStatusCancelled, "The operation was cancelled.");
         status = SZStatusCancelled;
+    } else if (result != S_OK && (callbackSpec->sourcePasswordRequested
+                                  || (callbackSpec->hasPassword && SourceIsEncrypted(source)))) {
+        // Existing items had to be decoded to be carried over, and could not be.
+        // When a password for writing is given, 7-Zip decodes with that one without
+        // asking, so a failure on an encrypted source is read the same way.
+        if (callbackSpec->hasSourcePassword) {
+            Fail(error, SZStatusWrongPassword, "The password is incorrect.");
+            status = SZStatusWrongPassword;
+        } else {
+            Fail(error, SZStatusPasswordRequired, "This archive is password protected.");
+            status = SZStatusPasswordRequired;
+        }
     } else if (!callbackSpec->failurePath.empty()) {
         Fail(error, SZStatusCannotOpenFile, "Cannot read " + callbackSpec->failurePath + ": " + callbackSpec->failureDetail);
         status = SZStatusCannotOpenFile;
