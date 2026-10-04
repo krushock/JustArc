@@ -9,6 +9,9 @@ final class QuickExtractCoordinator {
     private var isRunning = false
 
     var onAllJobsFinished: (() -> Void)?
+    /// Whether a browser window has this archive open. A disk image has one mount
+    /// however many places read it, and that window's must not be taken away.
+    var isOpenInAWindow: ((URL) -> Bool)?
 
     var hasActiveJobs: Bool { isRunning || !queue.isEmpty }
 
@@ -33,7 +36,9 @@ final class QuickExtractCoordinator {
 
         // Disk images go through hdiutil, everything else through 7-Zip.
         let engine = EngineFactory.engine(for: archive)
-        defer { engine.release(archive: archive) }
+        defer {
+            if isOpenInAWindow?(archive) != true { engine.release(archive: archive) }
+        }
 
         // Step 0: the archive may be a cloud placeholder that is not on disk yet.
         do {

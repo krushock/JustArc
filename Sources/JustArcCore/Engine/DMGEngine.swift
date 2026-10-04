@@ -143,14 +143,21 @@ public struct DMGEngine: ArchiveEngine {
         let totalBytes = jobs.reduce(UInt64(0)) { $0 + Self.recursiveSize(of: $1.source) }
         let counter = ByteCounter(total: totalBytes, progress: progress)
 
-        for job in jobs {
-            if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
-            let relative = flattenPaths ? (job.relativePath as NSString).lastPathComponent : job.relativePath
-            let target = try PathSafety.resolvedURL(for: relative, in: destination)
-            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true)
-            try copy(from: job.source, to: target, overwrite: overwrite,
-                     counter: counter, cancellation: cancellation)
+        let journal = CopyJournal()
+        do {
+            for job in jobs {
+                if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
+                let relative = flattenPaths ? (job.relativePath as NSString).lastPathComponent : job.relativePath
+                let target = try PathSafety.resolvedURL(for: relative, in: destination)
+                try journal.createDirectories(to: target.deletingLastPathComponent())
+                try copy(from: job.source, to: target, overwrite: overwrite,
+                         counter: counter, cancellation: cancellation, journal: journal)
+            }
+        } catch let error as ArchiveError where error == .cancelled {
+            // Cancelling means "as if I had not started": what was copied is removed.
+            // A file that replaced an existing one cannot be brought back, so it stays.
+            journal.undo()
+            throw error
         }
         progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
@@ -195,7 +202,8 @@ public struct DMGEngine: ArchiveEngine {
                       to proposedTarget: URL,
                       overwrite: OverwriteMode,
                       counter: ByteCounter,
-                      cancellation: CancellationToken?) throws {
+                      cancellation: CancellationToken?,
+                      journal: CopyJournal) throws {
         if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
         let fm = FileManager.default
 
@@ -213,13 +221,14 @@ public struct DMGEngine: ArchiveEngine {
                 }
                 target = PathSafety.uniqueURL(for: target)
             }
-            try fm.createDirectory(at: target, withIntermediateDirectories: true)
+            try journal.createDirectories(to: target)
             for child in topLevelChildren(of: source) {
                 try copy(from: child,
                          to: target.appendingPathComponent(child.lastPathComponent),
                          overwrite: overwrite,
                          counter: counter,
-                         cancellation: cancellation)
+                         cancellation: cancellation,
+                         journal: journal)
             }
             Self.copyMetadata(from: source, to: target)
             return
@@ -248,17 +257,61 @@ public struct DMGEngine: ArchiveEngine {
             .appendingPathComponent(".justarc-\(UUID().uuidString).part")
         do {
             try fm.copyItem(at: source, to: temporary)
-            if overwrite == .renameExisting, PathSafety.itemExists(at: target) {
-                try fm.moveItem(at: target, to: PathSafety.uniqueURL(for: target))
+            let existed = PathSafety.itemExists(at: target)
+            if overwrite == .renameExisting, existed {
+                let aside = PathSafety.uniqueURL(for: target)
+                try fm.moveItem(at: target, to: aside)
+                journal.noteMoved(target, to: aside)
             }
             guard Darwin.rename(temporary.path, target.path) == 0 else {
                 throw ArchiveError.ioFailure(String(cString: strerror(errno)))
             }
+            if !existed || overwrite == .renameExisting { journal.noteCreated(target) }
         } catch {
             try? fm.removeItem(at: temporary)
             throw error
         }
         counter.advance(UInt64(values?.fileSize ?? 0), file: source.lastPathComponent)
+    }
+
+    /// What an extraction has put on disk, so a cancel can take it away again.
+    private final class CopyJournal {
+        private enum Step {
+            case created(URL)
+            case createdFolder(URL)
+            case moved(original: URL, aside: URL)
+        }
+        private var steps: [Step] = []
+
+        func noteCreated(_ url: URL) { steps.append(.created(url)) }
+        func noteMoved(_ original: URL, to aside: URL) { steps.append(.moved(original: original, aside: aside)) }
+
+        /// Creates `folder` and any missing folders above it, noting each one made.
+        func createDirectories(to folder: URL) throws {
+            var missing: [URL] = []
+            var current = folder
+            while !PathSafety.itemExists(at: current), current.path != "/" {
+                missing.append(current)
+                current = current.deletingLastPathComponent()
+            }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            for made in missing.reversed() { steps.append(.createdFolder(made)) }
+        }
+
+        func undo() {
+            for step in steps.reversed() {
+                switch step {
+                case .created(let url):
+                    try? FileManager.default.removeItem(at: url)
+                case .createdFolder(let url):
+                    // Only if it is empty again; anything else in it is not ours.
+                    Darwin.rmdir(url.path)
+                case .moved(let original, let aside):
+                    try? FileManager.default.moveItem(at: aside, to: original)
+                }
+            }
+            steps.removeAll()
+        }
     }
 
     /// A directory that is not a symbolic link to one.

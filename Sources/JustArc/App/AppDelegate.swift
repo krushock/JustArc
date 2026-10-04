@@ -36,6 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         quickExtract.onAllJobsFinished = { [weak self] in
             self?.terminateIfNothingLeftToShow()
         }
+        quickExtract.isOpenInAWindow = { [weak self] archive in
+            let wanted = archive.standardizedFileURL
+            return self?.browserControllers.contains {
+                $0.session.archiveURL?.standardizedFileURL == wanted } ?? false
+        }
         registerServices()
     }
 
@@ -71,8 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if !others.isEmpty {
             let controller = browserControllers.first(where: \.isPristine)
                 ?? makeBrowserWindow(for: nil)
-            controller.session.stage(items: others)
-            controller.reloadFromSession()
+            controller.add(items: others)
             controller.window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -222,8 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             stageIntoNewWindow: { [weak self] items in
                 guard let self else { return }
                 let controller = self.makeBrowserWindow(for: nil)
-                controller.session.stage(items: items)
-                controller.reloadFromSession()
+                controller.add(items: items)
                 NSApp.activate(ignoringOtherApps: true)
             })
         servicesProvider = provider

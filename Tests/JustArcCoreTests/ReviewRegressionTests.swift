@@ -153,6 +153,10 @@ final class ReviewRegressionTests: XCTestCase {
                                 items: [root.appendingPathComponent("payload"), root.appendingPathComponent("__MACOSX")],
                                 options: CompressionOptions(formatKey: "zip", excludeMacMetadata: false))
 
+        let original = try await FixtureBuilder.run(["l", "-slt", archive.path], in: root).standardOutput
+        XCTAssertTrue(original.contains("._readme.txt") && original.contains("._notes.txt"),
+                      "the fixture has no companions to delete")
+
         try await engine.delete(entries: [ArchiveEntry(path: "payload/readme.txt", isDirectory: false),
                                           ArchiveEntry(path: "payload/docs", isDirectory: true)],
                                 from: archive, password: nil)
@@ -332,6 +336,221 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("payload/readme 2.txt").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("payload 2").path),
                        "Keep Both for files made a second copy of the whole folder")
+    }
+
+    // MARK: - What the Finder is shown afterwards
+
+    func testKeepBothRevealsTheNewCopyNotTheOriginal() async throws {
+        let single = root.appendingPathComponent("report.txt")
+        try "from the archive\n".write(to: single, atomically: true, encoding: .utf8)
+        let archive = root.appendingPathComponent("one.zip")
+        try await engine.create(archive: archive, items: [single], options: CompressionOptions(formatKey: "zip"))
+
+        let destination = root.appendingPathComponent("out")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try "already here\n".write(to: destination.appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+
+        let listing = try await engine.list(archive: archive, password: nil, encodingCodePage: nil)
+        func extract(_ mode: OverwriteMode) async throws -> [String] {
+            let job = ExtractionJob(archive: archive, destination: destination, allEntries: listing.entries,
+                                    roots: ["report.txt"], fileOverwrite: mode)
+            return try await ExtractionRunner.run(job, engine: engine).producedItems.map(\.lastPathComponent)
+        }
+
+        let keptBoth = try await extract(.renameNew)
+        XCTAssertEqual(keptBoth, ["report 2.txt"])
+        let again = try await extract(.renameNew)
+        XCTAssertEqual(again, ["report 3.txt"])
+        // With the existing one renamed instead, the new file has the archive's name.
+        let movedAside = try await extract(.renameExisting)
+        XCTAssertEqual(movedAside, ["report.txt"])
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("report.txt"), encoding: .utf8),
+                       "from the archive\n")
+        let replaced = try await extract(.overwrite)
+        XCTAssertEqual(replaced, ["report.txt"])
+    }
+
+    func testKeepBothForFoldersStillAppliesTheAnswerAboutFiles() async throws {
+        let loose = root.appendingPathComponent("loose.txt")
+        try "new\n".write(to: loose, atomically: true, encoding: .utf8)
+        let archive = root.appendingPathComponent("mixed.zip")
+        try await engine.create(archive: archive, items: [root.appendingPathComponent("payload"), loose],
+                                options: CompressionOptions(formatKey: "zip"))
+        let listing = try await engine.list(archive: archive, password: nil, encodingCodePage: nil)
+
+        for (mode, expected) in [(OverwriteMode.skip, "old\n"), (.overwrite, "new\n")] {
+            let destination = root.appendingPathComponent("out-\(mode.rawValue)")
+            try FileManager.default.createDirectory(at: destination.appendingPathComponent("payload"),
+                                                    withIntermediateDirectories: true)
+            try "old\n".write(to: destination.appendingPathComponent("loose.txt"), atomically: true, encoding: .utf8)
+
+            let job = ExtractionJob(archive: archive, destination: destination, allEntries: listing.entries,
+                                    roots: ["payload", "loose.txt"], folderConflicts: ["payload"],
+                                    folderResolution: .keepBoth, fileOverwrite: mode)
+            _ = try await ExtractionRunner.run(job, engine: engine)
+
+            XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("payload 2/readme.txt").path),
+                          "\(mode): the folder was not kept beside the existing one")
+            XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("loose.txt"), encoding: .utf8),
+                           expected, "\(mode)")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("loose 2.txt").path),
+                           "\(mode): the file was duplicated regardless of the answer")
+        }
+    }
+
+    // MARK: - Hidden companions follow a rename
+
+    func testRenamingAFileRenamesItsHiddenCompanions() async throws {
+        let shadow = root.appendingPathComponent("__MACOSX/payload")
+        try FileManager.default.createDirectory(at: shadow, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: shadow.appendingPathComponent("._readme.txt"))
+        let archive = root.appendingPathComponent("finder.zip")
+        try await engine.create(archive: archive,
+                                items: [root.appendingPathComponent("payload"), root.appendingPathComponent("__MACOSX")],
+                                options: CompressionOptions(formatKey: "zip", excludeMacMetadata: false))
+
+        let original = try await FixtureBuilder.run(["l", "-slt", archive.path], in: root).standardOutput
+        XCTAssertTrue(original.contains("__MACOSX/payload/._readme.txt"), "the fixture has no companion to rename")
+
+        try await engine.rename(entry: ArchiveEntry(path: "payload/readme.txt", isDirectory: false),
+                                to: "payload/intro.txt", in: archive, password: nil)
+        let raw = try await FixtureBuilder.run(["l", "-slt", archive.path], in: root).standardOutput
+        XCTAssertTrue(raw.contains("__MACOSX/payload/._intro.txt"), "the companion kept the old name: \(raw.components(separatedBy: "\n").filter { $0.hasPrefix("Path") })")
+        XCTAssertFalse(raw.contains("._readme.txt"))
+
+        // A folder takes the companions of everything inside it along.
+        try await engine.rename(entry: ArchiveEntry(path: "payload", isDirectory: true),
+                                to: "project", in: archive, password: nil)
+        let after = try await FixtureBuilder.run(["l", "-slt", archive.path], in: root).standardOutput
+        XCTAssertTrue(after.contains("__MACOSX/project/._intro.txt"))
+        XCTAssertFalse(after.contains("__MACOSX/payload"))
+    }
+
+    func testMetadataPathsAreRewrittenInTheirOwnShape() {
+        XCTAssertEqual(MacMetadata.path("__MACOSX/Docs/._a.txt", redescribing: "Docs/b.txt"), "__MACOSX/Docs/._b.txt")
+        XCTAssertEqual(MacMetadata.path("Docs/._a.txt", redescribing: "Papers/a.txt"), "Papers/._a.txt")
+        XCTAssertEqual(MacMetadata.path("__MACOSX/Docs", redescribing: "Papers"), "__MACOSX/Papers")
+        XCTAssertNil(MacMetadata.path("Docs/a.txt", redescribing: "Docs/b.txt"))
+    }
+
+    // MARK: - Things that are not files
+
+    /// Opening a pipe to read it waits for someone to write to it, for ever.
+    func testAPipeInAFolderIsLeftOutRatherThanWaitedOn() async throws {
+        let pipe = root.appendingPathComponent("payload/pipe")
+        XCTAssertEqual(mkfifo(pipe.path, 0o644), 0)
+        let archive = root.appendingPathComponent("with-pipe.zip")
+        try await engine.create(archive: archive, items: [root.appendingPathComponent("payload")],
+                                options: CompressionOptions(formatKey: "zip"))
+        let found = try await paths(in: archive)
+        XCTAssertFalse(found.contains("payload/pipe"))
+        XCTAssertTrue(found.contains("payload/readme.txt"))
+    }
+
+    // MARK: - The RAR download is checked
+
+    func testHomebrewsRecordOfTheCaskIsRead() {
+        let json = """
+        {"token": "rar", "version": "9.99",
+         "url": "https://www.rarlab.com/rar/rarmacos-arm-999.tar.gz",
+         "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+         "variations": {
+           "sonoma": {"url": "https://www.rarlab.com/rar/rarmacos-x64-999.tar.gz",
+                      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+           "x86_64_linux": {"url": "https://www.rarlab.com/rar/rarmacos-x64-999.tar.gz", "sha256": null},
+           "arm64_linux": {"url": null}
+         }}
+        """
+        let table = RarToolInstaller.checksums(fromHomebrewCask: Data(json.utf8))
+        XCTAssertEqual(table["rarmacos-arm-999.tar.gz"], String(repeating: "a", count: 64))
+        XCTAssertEqual(table["rarmacos-x64-999.tar.gz"], String(repeating: "b", count: 64))
+        XCTAssertTrue(RarToolInstaller.checksums(fromHomebrewCask: Data("not json".utf8)).isEmpty)
+    }
+
+    func testADownloadIsOnlyAcceptedWhenItMatchesARecord() throws {
+        let known = try XCTUnwrap(RarToolInstaller.knownChecksums.first)
+        let other = String(repeating: "0", count: 64)
+        // Matches what this build knows.
+        XCTAssertEqual(RarToolInstaller.verdict(digest: known.value, fileName: known.key, published: [:]), .verified)
+        XCTAssertEqual(RarToolInstaller.verdict(digest: known.value.uppercased(), fileName: known.key, published: [:]),
+                       .verified)
+        // Differs from what this build knows: never installed, whatever else says.
+        XCTAssertEqual(RarToolInstaller.verdict(digest: other, fileName: known.key, published: [:]), .mismatch)
+        // A newer release, vouched for by the second source.
+        XCTAssertEqual(RarToolInstaller.verdict(digest: other, fileName: "rarmacos-arm-999.tar.gz",
+                                                published: ["rarmacos-arm-999.tar.gz": other]), .verified)
+        XCTAssertEqual(RarToolInstaller.verdict(digest: other, fileName: "rarmacos-arm-999.tar.gz",
+                                                published: ["rarmacos-arm-999.tar.gz": known.value]), .mismatch)
+        // Nothing on record anywhere: the user has to decide.
+        XCTAssertEqual(RarToolInstaller.verdict(digest: other, fileName: "rarmacos-arm-999.tar.gz", published: [:]),
+                       .unknown)
+
+        let file = root.appendingPathComponent("abc.txt")
+        try Data("abc".utf8).write(to: file)
+        XCTAssertEqual(try RarToolInstaller.sha256(of: file),
+                       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        // The release this build falls back to is one it can check.
+        for slug in ["arm", "x64"] {
+            XCTAssertNotNil(RarToolInstaller.knownChecksums["rarmacos-\(slug)-\(RarToolInstaller.fallbackVersion).tar.gz"])
+        }
+    }
+
+    // MARK: - Messages
+
+    func testBridgeMessagesAreRecognisedSoTheyCanBeTranslated() {
+        // Run without the app's bundle, each comes back as its English; what matters
+        // is that every shape the bridge produces is taken apart correctly.
+        XCTAssertEqual(BridgeError.localized("Is not an archive: /tmp/a b/notes.zip"),
+                       "notes.zip is not an archive JustArc can read.")
+        XCTAssertEqual(BridgeError.localized("Cannot open /tmp/x.zip: No such file or directory"),
+                       "x.zip could not be opened. No such file or directory.")
+        XCTAssertEqual(BridgeError.localized("docs/a.txt: its checksum does not match"),
+                       "docs/a.txt could not be extracted: its checksum does not match.")
+        XCTAssertEqual(BridgeError.localized("a.txt: could not create the file: Permission denied"),
+                       "a.txt could not be extracted: the file could not be created: Permission denied.")
+        XCTAssertEqual(BridgeError.localized("7-Zip could not write the archive: the format does not support this"),
+                       "The archive could not be written: the format does not support this.")
+        XCTAssertEqual(BridgeError.localized("The password is incorrect."), "The password is incorrect.")
+        XCTAssertEqual(BridgeError.localized("Something nobody planned for"), "Something nobody planned for")
+    }
+
+    // MARK: - Scanning
+
+    func testScanningThenStagingIsTheSameAsStaging() {
+        let direct = ArchiveSession(archiveURL: nil)
+        direct.stage(items: [root.appendingPathComponent("payload")], into: "inside")
+        let scanned = ArchiveSession(archiveURL: nil)
+        scanned.stage(scanned: ArchiveSession.scan([root.appendingPathComponent("payload")]), into: "inside")
+        XCTAssertEqual(Set(scanned.visibleEntries.map(\.path)), Set(direct.visibleEntries.map(\.path)))
+        XCTAssertEqual(scanned.stagedSource(for: "inside/payload/readme.txt"),
+                       direct.stagedSource(for: "inside/payload/readme.txt"))
+        XCTAssertTrue(scanned.visibleEntries.contains { $0.path == "inside/payload/docs/notes.txt" })
+    }
+
+    func testCancellingADiskImageExtractionRemovesWhatWasCopied() async throws {
+        let image = FileManager.default.temporaryDirectory
+            .appendingPathComponent("justarc-cancel-\(UUID().uuidString).dmg")
+        let dmg = DMGEngine()
+        defer {
+            dmg.release(archive: image)
+            try? FileManager.default.removeItem(at: image)
+        }
+        try await dmg.create(archive: image, items: [root.appendingPathComponent("payload")],
+                             options: CompressionOptions(formatKey: "dmg", level: 1))
+
+        let destination = root.appendingPathComponent("dmg-out")
+        let token = CancellationToken()
+        do {
+            // Cancelled as soon as the first file has been copied.
+            try await dmg.extract(archive: image, entries: nil, to: destination, password: nil,
+                                  overwrite: .renameNew, flattenPaths: false, cancellation: token,
+                                  progress: { progress in if progress.currentFile != nil { token.cancel() } })
+            XCTFail("the extraction finished before it could be cancelled")
+        } catch let error as ArchiveError {
+            XCTAssertEqual(error, .cancelled)
+        }
+        let left = (try? FileManager.default.subpathsOfDirectory(atPath: destination.path)) ?? []
+        XCTAssertEqual(left, [], "files copied before the cancel were left behind")
     }
 
     // MARK: - Processes

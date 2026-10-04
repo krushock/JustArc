@@ -140,7 +140,12 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
     /// An untitled window nobody has touched. Opening an archive takes its place
     /// instead of leaving an empty window behind, the way TextEdit treats a blank page.
     var isPristine: Bool {
-        session.isUntitled && !session.hasUnsavedChanges
+        session.isUntitled && !session.hasUnsavedChanges && !browser.isBusy
+    }
+
+    /// Adds files to this window's archive, at its root.
+    func add(items: [URL]) {
+        browser.add(items: items, into: "")
     }
 
     /// True while the window is reading, writing or extracting.

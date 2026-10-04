@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <map>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -61,6 +62,22 @@ struct PendingHardLink {
     std::string target;
 };
 
+/// One thing done to the destination, kept so it can be undone if the user cancels.
+struct Step {
+    enum Kind {
+        /// `first` did not exist before and was created.
+        created,
+        /// `first` was renamed to `second` to make room.
+        movedAside,
+        /// `first` was replaced; `second` is a hidden copy of what it used to be.
+        replaced,
+        /// The folder `first` was created.
+        createdFolder,
+    } kind;
+    std::string first;
+    std::string second;
+};
+
 enum class Failure {
     none,
     wrongPassword,
@@ -74,8 +91,12 @@ enum class Failure {
 ///
 /// A file is decoded into a temporary name beside its destination and only moved
 /// into place once it has decoded correctly. Until then nothing that was already
-/// there is touched, so a wrong password, a damaged archive or a cancel leaves the
-/// destination as it was found, whichever overwrite rule is in force.
+/// there is touched, so a wrong password or a damaged archive leaves the files it
+/// could not produce as they were, whichever overwrite rule is in force.
+///
+/// Everything that is done is also written down, and a cancel undoes it in reverse:
+/// new files and folders are removed, files moved aside are moved back, and replaced
+/// files are restored from the copy kept until the end.
 class ExtractCallback Z7_final:
     public IArchiveExtractCallback,
     public ICryptoGetTextPassword,
@@ -129,6 +150,15 @@ private:
 
     std::vector<PendingFolder> folders;
     std::vector<PendingHardLink> hardLinks;
+    std::vector<Step> journal;
+    /// Folders that could not be made where the archive wanted them, because a file
+    /// of that name is there, and where they went instead. Keyed by the path wanted.
+    std::map<std::string, std::string> redirected;
+    /// True once an encrypted item has decoded, which proves the password.
+    bool passwordProven = false;
+    /// True when the format checks the password itself before decoding, so that a
+    /// data error on this item means damage and not a wrong password.
+    bool itemVerifiesPassword = false;
 
     void Record(Failure kind, const std::string &detail) {
         if (failure != Failure::none) return;
@@ -138,6 +168,10 @@ private:
     }
 
     void AbandonInFlight();
+    std::string PlaceFolder(const std::string &relative);
+    std::string HiddenSibling(const std::string &path, const char *suffix);
+    void Rollback();
+    void DiscardBackups();
     bool MakeWay(std::string &path);
     bool CommitFile();
     bool LinkStaysInside(const std::string &linkPath, const std::string &target);
@@ -171,10 +205,73 @@ void ExtractCallback::AbandonInFlight() {
     }
 }
 
+/// A name beside `path` that the Finder does not show, for work in progress.
+std::string ExtractCallback::HiddenSibling(const std::string &path, const char *suffix) {
+    char random[32];
+    snprintf(random, sizeof(random), "%08x%08x", arc4random(), arc4random());
+    return path.substr(0, path.find_last_of('/')) + "/.justarc-" + random + suffix;
+}
+
+/// Makes sure the folder at `relative`, a path under the destination, exists, and
+/// returns where it really is. Empty when it could not be made.
+///
+/// Where a file already has the name a folder needs, the folder is made beside it
+/// under a free name and everything addressed to it follows. An archive can hold both
+/// "name" and "name/child"; a disk cannot, and losing either would be worse than
+/// renaming one.
+std::string ExtractCallback::PlaceFolder(const std::string &relative) {
+    std::string wanted = destination;
+    std::string actual = destination;
+    size_t start = 0;
+    while (start < relative.size()) {
+        const size_t slash = relative.find('/', start);
+        const std::string part = relative.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+        start = slash == std::string::npos ? relative.size() : slash + 1;
+        if (part.empty()) continue;
+
+        wanted += "/" + part;
+        const auto known = redirected.find(wanted);
+        if (known != redirected.end()) {
+            actual = known->second;
+            continue;
+        }
+
+        std::string candidate = actual + "/" + part;
+        struct stat info;
+        if (lstat(candidate.c_str(), &info) == 0) {
+            if (S_ISDIR(info.st_mode)) {
+                actual = candidate;
+                continue;
+            }
+            if (S_ISLNK(info.st_mode)) {
+                // Writing through a link could land anywhere on disk.
+                Record(Failure::unsafePath, "");
+                return "";
+            }
+            candidate = UniquePath(candidate);
+            redirected[wanted] = candidate;
+        }
+        if (mkdir(candidate.c_str(), 0755) != 0) {
+            Record(Failure::writeError, std::string("could not create a folder: ") + std::strerror(errno));
+            return "";
+        }
+        journal.push_back({Step::createdFolder, candidate, ""});
+        actual = candidate;
+    }
+    return actual;
+}
+
 /// Applies the overwrite rule to a path that a link is about to be made at. Returns
 /// false when the item should not be written, having recorded why if that is an error.
 bool ExtractCallback::MakeWay(std::string &path) {
     if (!PathExists(path)) return true;
+    // A folder in the way is never removed or moved: that could take a great deal of
+    // the user's data with it. The new item goes beside it instead.
+    if (IsDirectoryPath(path) && !IsSymlinkPath(path)) {
+        if (overwrite == SZOverwriteSkip) return false;
+        path = UniquePath(path);
+        return true;
+    }
     switch (overwrite) {
         case SZOverwriteSkip:
             return false;
@@ -187,20 +284,19 @@ bool ExtractCallback::MakeWay(std::string &path) {
                 Record(Failure::writeError, std::string("could not rename the existing item: ") + std::strerror(errno));
                 return false;
             }
+            journal.push_back({Step::movedAside, path, moved});
             return true;
         }
-        case SZOverwriteReplace:
-            // A folder in the way of a file is never removed: that could take a
-            // great deal of the user's data with it.
-            if (IsDirectoryPath(path) && !IsSymlinkPath(path)) {
-                Record(Failure::writeError, "a folder with the same name is in the way");
-                return false;
-            }
-            if (unlink(path.c_str()) != 0) {
+        case SZOverwriteReplace: {
+            // Set aside rather than deleted, so a cancel can put it back.
+            const std::string backup = HiddenSibling(path, ".bak");
+            if (rename(path.c_str(), backup.c_str()) != 0) {
                 Record(Failure::writeError, std::string("could not replace the existing file: ") + std::strerror(errno));
                 return false;
             }
+            journal.push_back({Step::replaced, path, backup});
             return true;
+        }
     }
     return true;
 }
@@ -208,13 +304,16 @@ bool ExtractCallback::MakeWay(std::string &path) {
 /// Moves a fully decoded file from its temporary name to its real one.
 bool ExtractCallback::CommitFile() {
     std::string target = finalPath;
-    if (overwrite == SZOverwriteReplace) {
-        // rename() replaces a file in one step, so there is no moment at which
-        // neither the old file nor the new one exists.
-        if (IsDirectoryPath(target) && !IsSymlinkPath(target)) {
-            Record(Failure::writeError, "a folder with the same name is in the way");
-            unlink(temporaryPath.c_str());
-            return false;
+    const bool replacingFile = overwrite == SZOverwriteReplace && PathExists(target)
+        && !(IsDirectoryPath(target) && !IsSymlinkPath(target));
+    if (replacingFile) {
+        // rename() replaces a file in one step, so there is no moment at which neither
+        // the old file nor the new one exists. A second name for the old file is made
+        // first, so that a cancel can bring it back; where the volume cannot do that,
+        // the replacement simply cannot be undone.
+        const std::string backup = HiddenSibling(target, ".bak");
+        if (linkat(AT_FDCWD, target.c_str(), AT_FDCWD, backup.c_str(), 0) == 0) {
+            journal.push_back({Step::replaced, target, backup});
         }
     } else if (!MakeWay(target)) {
         unlink(temporaryPath.c_str());
@@ -225,8 +324,40 @@ bool ExtractCallback::CommitFile() {
         unlink(temporaryPath.c_str());
         return false;
     }
+    if (!replacingFile) journal.push_back({Step::created, target, ""});
     finalPath = target;
     return true;
+}
+
+/// Undoes everything done so far, newest first.
+void ExtractCallback::Rollback() {
+    for (auto step = journal.rbegin(); step != journal.rend(); ++step) {
+        switch (step->kind) {
+            case Step::created:
+                unlink(step->first.c_str());
+                break;
+            case Step::movedAside:
+                rename(step->second.c_str(), step->first.c_str());
+                break;
+            case Step::replaced:
+                rename(step->second.c_str(), step->first.c_str());
+                break;
+            case Step::createdFolder:
+                // Fails, rightly, if something else has since been put in it.
+                rmdir(step->first.c_str());
+                break;
+        }
+    }
+    journal.clear();
+    folders.clear();
+}
+
+/// Drops the copies kept of replaced files, once they can no longer be wanted.
+void ExtractCallback::DiscardBackups() {
+    for (const Step &step : journal) {
+        if (step.kind == Step::replaced) unlink(step.second.c_str());
+    }
+    journal.clear();
 }
 
 Z7_COM7F_IMF(ExtractCallback::GetStream(UInt32 index, ISequentialOutStream **outStream, Int32 askMode)) {
@@ -239,6 +370,16 @@ Z7_COM7F_IMF(ExtractCallback::GetStream(UInt32 index, ISequentialOutStream **out
     itemEncrypted = GetBoolProperty(handle, index, kpidEncrypted);
     progress.SetCurrent(itemPath);
     extracting = askMode == NArchive::NExtract::NAskMode::kExtract;
+
+    // Zip checks an AES password before decoding, so with one accepted, a failure
+    // further on is damage. Other formats only find out by decoding.
+    itemVerifiesPassword = false;
+    if (itemEncrypted && EqualsIgnoringCase(archive->handler->name, UString(L"zip"))) {
+        UString method;
+        if (GetStringProperty(handle, index, kpidMethod, method)) {
+            itemVerifiesPassword = method.Find(L"AES") >= 0;
+        }
+    }
     if (!extracting) return S_OK;
 
     std::string relative;
@@ -270,28 +411,18 @@ Z7_COM7F_IMF(ExtractCallback::GetStream(UInt32 index, ISequentialOutStream **out
         return E_ABORT;
     }
 
-    const std::string path = destination + "/" + relative;
     // Refused before anything is created: otherwise folders are made one inside the
     // other until the system gives up, leaving a chain too deep to delete easily.
-    if (path.size() >= PATH_MAX - 64) {
+    if (destination.size() + relative.size() >= PATH_MAX - 64) {
         Record(Failure::writeError, "its path is longer than macOS allows");
-        return E_ABORT;
-    }
-    const std::string parent = path.substr(0, path.find_last_of('/'));
-    if (!MakeDirectories(parent)) {
-        Record(Failure::writeError, std::string("could not create a folder: ") + std::strerror(errno));
         return E_ABORT;
     }
 
     if (isDirectory) {
-        if (!MakeDirectories(path)) {
-            Record(Failure::writeError, PathExists(path)
-                   ? std::string("a file with the same name is in the way")
-                   : std::string("could not create a folder: ") + std::strerror(errno));
-            return E_ABORT;
-        }
+        const std::string folderPath = PlaceFolder(relative);
+        if (folderPath.empty()) return E_ABORT;
         PendingFolder folder;
-        folder.path = path;
+        folder.path = folderPath;
         folder.hasTime = hasTime;
         folder.seconds = seconds;
         folder.nanoseconds = nanoseconds;
@@ -301,19 +432,20 @@ Z7_COM7F_IMF(ExtractCallback::GetStream(UInt32 index, ISequentialOutStream **out
         return S_OK;
     }
 
+    const size_t lastSlash = relative.find_last_of('/');
+    const std::string parent = PlaceFolder(lastSlash == std::string::npos ? "" : relative.substr(0, lastSlash));
+    if (parent.empty()) return E_ABORT;
+    const std::string path = parent + "/" + (lastSlash == std::string::npos ? relative : relative.substr(lastSlash + 1));
+
     UString hardLinkTarget;
     if (GetStringProperty(handle, index, kpidHardLink, hardLinkTarget) && !hardLinkTarget.IsEmpty()) {
         hardLinks.push_back({itemPath, path, Narrow(hardLinkTarget)});
         return S_OK;
     }
 
-    if (PathExists(path)) {
-        if (overwrite == SZOverwriteSkip) return S_OK;
-        if (overwrite == SZOverwriteReplace && IsDirectoryPath(path) && !IsSymlinkPath(path)) {
-            Record(Failure::writeError, "a folder with the same name is in the way");
-            return E_ABORT;
-        }
-    }
+    // Skipping is decided now, before anything is decoded. Every other rule is
+    // applied when the file is whole.
+    if (overwrite == SZOverwriteSkip && PathExists(path)) return S_OK;
     finalPath = path;
 
     if (itemIsLink) {
@@ -324,9 +456,7 @@ Z7_COM7F_IMF(ExtractCallback::GetStream(UInt32 index, ISequentialOutStream **out
         return S_OK;
     }
 
-    char suffix[32];
-    snprintf(suffix, sizeof(suffix), "%08x%08x", arc4random(), arc4random());
-    temporaryPath = parent + "/.justarc-" + suffix + ".part";
+    temporaryPath = HiddenSibling(path, ".part");
     fileSpec = new COutFileStream;
     fileStream = fileSpec;
     if (!fileSpec->Create_NEW(temporaryPath.c_str())) {
@@ -401,6 +531,7 @@ void ExtractCallback::CreateLink(const std::string &target) {
         Record(Failure::writeError, std::string("could not create a link: ") + std::strerror(errno));
         return;
     }
+    journal.push_back({Step::created, path, ""});
     summary.filesProcessed++;
 }
 
@@ -430,6 +561,7 @@ void ExtractCallback::CreateHardLinks() {
             Record(Failure::writeError, std::string("could not create a hard link: ") + std::strerror(errno));
             continue;
         }
+        journal.push_back({Step::created, path, ""});
         summary.filesProcessed++;
     }
     hardLinks.clear();
@@ -438,7 +570,13 @@ void ExtractCallback::CreateHardLinks() {
 void ExtractCallback::Finish() {
     AbandonInFlight();
     if (testOnly) return;
-    if (failure == Failure::none && !progress.Cancelled()) CreateHardLinks();
+    if (progress.Cancelled()) {
+        // Cancelling means "as if I had not started".
+        Rollback();
+        return;
+    }
+    if (failure == Failure::none) CreateHardLinks();
+    DiscardBackups();
 
     // Folders get their dates and permissions last, deepest first, now that nothing
     // more is written into them. The owner always keeps access to what was extracted.
@@ -463,7 +601,11 @@ Z7_COM7F_IMF(ExtractCallback::SetOperationResult(Int32 result)) {
     if (result != kOK) {
         // With the wrong key, most formats report garbage data rather than naming the
         // password, so on an encrypted item that is what it almost always means.
-        if (result == kWrongPassword || (itemEncrypted && (result == kDataError || result == kCRCError))) {
+        // Unless the password has already been shown to be right, by the format's own
+        // check or by an earlier item decoding with it, in which case it is damage.
+        const bool garbage = result == kDataError || result == kCRCError;
+        if (result == kWrongPassword
+            || (itemEncrypted && garbage && !passwordProven && !itemVerifiesPassword)) {
             Record(Failure::wrongPassword, "");
         } else if (result == kUnsupportedMethod) {
             Record(Failure::unsupported, "it uses a compression method 7-Zip cannot decode");
@@ -479,6 +621,8 @@ Z7_COM7F_IMF(ExtractCallback::SetOperationResult(Int32 result)) {
             Record(Failure::dataError, reason);
         }
     }
+
+    if (result == kOK && itemEncrypted) passwordProven = true;
 
     if (fileStream) {
         if (hasTime) {

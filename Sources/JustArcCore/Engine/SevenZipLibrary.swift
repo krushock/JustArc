@@ -62,7 +62,9 @@ enum BridgeError {
     }
 
     static func archiveError(_ status: SZStatus, _ error: inout SZError, password: String?) -> ArchiveError {
-        let message = message(from: &error)
+        // Unsafe paths carry the entry's own name, which is not a sentence.
+        let raw = message(from: &error)
+        let message = status == SZStatusUnsafePath ? raw : localized(raw)
         switch status {
         case SZStatusPasswordRequired:
             return .passwordRequired

@@ -202,8 +202,11 @@ when the key is missing, and Sparkle refuses to install an unsigned update.
 Archives are untrusted input, and the destination is the user's own data.
 
 - A file is decoded under a temporary name and moved into place only when it is
-  whole. A wrong password, a damaged archive or a cancel leaves whatever was there
-  before exactly as it was, whichever overwrite rule was chosen.
+  whole. A wrong password or a damaged archive leaves whatever was there before
+  exactly as it was, whichever overwrite rule was chosen.
+- Cancelling puts the destination back as it was found.
+- An archive that holds both a file and a folder of one name, which a disk cannot,
+  is extracted with one of them renamed rather than refused.
 - Nothing is written outside the destination: not through `..`, an absolute path, a
   symbolic link planted by an earlier entry, or a link that reaches out by way of
   another link. Links pointing outside are not created.
@@ -232,16 +235,16 @@ Each of these has a test built from an archive made to break it, in
   has not been tried, because nothing here can drive the pointer.
 - Extended attributes and resource forks that macOS stores in `__MACOSX` and `._` files
   are skipped on extraction rather than applied to the extracted files.
-- The RAR tools are fetched from rarlab.com over TLS and nothing more: RARLAB
-  publishes no checksums and signs the binary ad hoc, so there is nothing to verify
-  it against.
-- Cancelling an extraction leaves the files that had already finished. Each file is
-  written whole or not at all, but the ones before the cancel stay.
-- One disk image open in two places shares a single mount, which is given back when
-  either is done; the other re-attaches on its next read.
-- With "Keep Both" for existing files, Finder is shown the original's name after
-  extracting rather than the new copy's.
-- Messages that come from 7-Zip itself, such as the reason an archive is damaged,
-  are in English whatever the app's language.
+- The RAR tools are checked against a SHA-256 before they are unpacked: one built
+  into JustArc for the release it knows, otherwise the one Homebrew records for its
+  `rar` cask. RARLAB publishes no checksums itself, so a release newer than both has
+  nothing to be checked against; JustArc says so and installs it only if told to.
+  The built-in hashes are Homebrew's, not ones computed here from a download.
+- Cancelling an extraction undoes it: new files and folders are removed, and files
+  that were replaced or moved aside are put back. Two exceptions: a replaced file on
+  a volume without hard links (exFAT, FAT), and one replaced while extracting a disk
+  image, stay replaced.
+- The reason the system gives for a failed write ("No space left on device") is in
+  English whatever the app's language; the sentence around it is translated.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.

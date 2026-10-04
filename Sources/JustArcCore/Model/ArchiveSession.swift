@@ -118,25 +118,44 @@ public final class ArchiveSession {
 
     // MARK: - Editing
 
+    /// A file or folder that has been walked, ready to be staged.
+    public struct Scanned: Sendable {
+        public let url: URL
+        let entries: [ArchiveEntry]
+    }
+
+    /// Walks files and folders to find what staging them would add. Touches nothing
+    /// in the session, so it can run off the main thread: a folder of a hundred
+    /// thousand files takes a while, and the window should not freeze for it.
+    public static func scan(_ items: [URL]) -> [Scanned] {
+        items.map { item in
+            let standardized = item.standardizedFileURL
+            return Scanned(url: standardized, entries: enumerate(item: standardized))
+        }
+    }
+
     /// Stages files and folders to be written on the next save.
     /// - Parameter folder: where they go inside the archive, "" being its root.
     @discardableResult
     public func stage(items: [URL], into folder: String = "") -> [ArchiveEntry] {
+        stage(scanned: Self.scan(items), into: folder)
+    }
+
+    @discardableResult
+    public func stage(scanned: [Scanned], into folder: String = "") -> [ArchiveEntry] {
         let folder = ArchivePath.normalize(folder)
         var added: [ArchiveEntry] = []
-        for item in items {
-            let standardized = item.standardizedFileURL
+        for item in scanned {
+            let standardized = item.url
             guard !stagedRoots.contains(standardized) else { continue }
             stagedRoots.append(standardized)
             if !folder.isEmpty { stagedFolders[standardized] = folder }
-            // One walk of the folder gives both the rows and where each came from.
-            let walked = Self.enumerate(item: standardized)
-            let produced = walked.map { $0.moved(into: folder) }
+            let produced = item.entries.map { $0.moved(into: folder) }
             let replaced = Set(produced.map(\.path))
             stagedEntries.removeAll { replaced.contains($0.path) }
             stagedEntries.append(contentsOf: produced)
             pendingDeletions.subtract(replaced)
-            for (path, url) in Self.sourceMap(for: standardized, entries: walked) {
+            for (path, url) in Self.sourceMap(for: standardized, entries: item.entries) {
                 stagedSources[ArchivePath.join(folder, path)] = url
             }
             added.append(contentsOf: produced)
@@ -319,9 +338,7 @@ public final class ArchiveSession {
     private func takeApart(_ directory: URL, at path: String, parent: String,
                            emit: (URL, String) -> Void) throws {
         var emitted = false
-        let children = try FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-        for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+        for child in Self.children(of: directory) {
             let childPath = ArchivePath.join(path, child.lastPathComponent)
             if pendingDeletions.contains(childPath) { continue }
             let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
@@ -338,6 +355,22 @@ public final class ArchiveSession {
         if !emitted {
             emit(try emptyFolder(named: directory.lastPathComponent), parent)
         }
+    }
+
+    /// Everything directly inside a folder, by name. Read with readdir, because
+    /// FileManager's listings leave out files whose names start with "._", and
+    /// whether those are stored is decided by the engine, from the user's setting.
+    private static func children(of directory: URL) -> [URL] {
+        guard let handle = opendir(directory.path) else { return [] }
+        defer { closedir(handle) }
+        var names: [String] = []
+        while let entry = readdir(handle) {
+            let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) { String(cString: $0) }
+            }
+            if name != "." && name != ".." { names.append(name) }
+        }
+        return names.sorted().map { directory.appendingPathComponent($0) }
     }
 
     /// Temporary empty folders standing in for staged folders whose contents were

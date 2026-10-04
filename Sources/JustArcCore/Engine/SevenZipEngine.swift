@@ -66,7 +66,8 @@ public struct SevenZipEngine: ArchiveEngine {
                 Diagnostics.log("Skipped \(summary.linksRefused) link(s) pointing outside \(destination.path)")
             }
         }
-        if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
+        // A cancel that arrives after the last file is written is too late to be one:
+        // the bridge reports a real cancel itself, having undone what it had extracted.
         progress?(ArchiveProgress(fraction: 1, currentFile: nil))
     }
 
@@ -218,10 +219,18 @@ public struct SevenZipEngine: ArchiveEngine {
 
         try await rewrite(archive, password: password, options: nil) { bridge in
             let items = bridge.indices()
+            func moved(_ path: String) -> String? {
+                if path == from { return to }
+                if path.hasPrefix(from + "/") { return to + path.dropFirst(from.count) }
+                return nil
+            }
             let renames = items.compactMap { item -> (index: UInt32, path: String)? in
-                if item.path == from { return (item.index, to) }
-                if item.path.hasPrefix(from + "/") {
-                    return (item.index, to + item.path.dropFirst(from.count))
+                if let path = moved(item.path) { return (item.index, path) }
+                // The hidden `._name` and `__MACOSX` companions follow what they
+                // describe, or they would be left behind under the old name.
+                if let described = MacMetadata.itemDescribed(by: item.path), let renamed = moved(described),
+                   let companion = MacMetadata.path(item.path, redescribing: renamed) {
+                    return (item.index, companion)
                 }
                 return nil
             }
@@ -383,24 +392,38 @@ public struct SevenZipEngine: ArchiveEngine {
             guard PathSafety.itemExists(at: item) else {
                 throw ArchiveError.ioFailure(L("%@ was not found.", item.path))
             }
+            // Pipes, sockets and devices have nothing to store, and opening a pipe to
+            // read it waits for ever for someone to write to it.
+            guard isStorable(item) else { continue }
             result.append(.init(archivePath: name, diskURL: item))
             guard isDirectory(item), !isSymbolicLink(item) else { continue }
 
-            guard let enumerator = FileManager.default.enumerator(atPath: item.path) else { continue }
-            while let relative = enumerator.nextObject() as? String {
-                let leaf = (relative as NSString).lastPathComponent
-                if excludeMacMetadata && isMacMetadata(leaf) {
-                    enumerator.skipDescendants()
+            // Not FileManager's enumerators: they leave out every file whose name
+            // starts with "._", which is not their decision to make. Whether those
+            // are stored is the user's choice, applied just below.
+            let relatives = ((try? FileManager.default.subpathsOfDirectory(atPath: item.path)) ?? []).sorted()
+            for relative in relatives {
+                if excludeMacMetadata,
+                   relative.split(separator: "/").contains(where: { isMacMetadata(String($0)) }) {
                     continue
                 }
-                result.append(.init(archivePath: name + "/" + relative,
-                                    diskURL: item.appendingPathComponent(relative)))
+                let child = item.appendingPathComponent(relative)
+                guard isStorable(child) else { continue }
+                result.append(.init(archivePath: name + "/" + relative, diskURL: child))
             }
         }
         // Two items of the same name, from different folders, would otherwise be
         // stored under one path. The later one wins, as it would in the Finder.
         var seen = Set<String>()
         return result.reversed().filter { seen.insert($0.archivePath).inserted }.reversed()
+    }
+
+    /// Files, folders and symbolic links.
+    private static func isStorable(_ url: URL) -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return true }
+        let kind = info.st_mode & S_IFMT
+        return kind == S_IFREG || kind == S_IFDIR || kind == S_IFLNK
     }
 
     private static func isMacMetadata(_ name: String) -> Bool {

@@ -288,7 +288,7 @@ final class RarSettingsViewController: SettingsPaneViewController {
         install(NSGridView(views: [
             [caption(L("Status:")), statusRow],
             [NSGridCell.emptyContentView, buttons],
-            [NSGridCell.emptyContentView, note(L("Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is installed in Application Support, not inside the app."))],
+            [NSGridCell.emptyContentView, note(L("Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is checked against a published checksum before it is installed, in Application Support, not inside the app."))],
         ]))
         refresh()
     }
@@ -317,6 +317,10 @@ final class RarSettingsViewController: SettingsPaneViewController {
     }
 
     @objc private func download() {
+        install(allowUnverified: false)
+    }
+
+    private func install(allowUnverified: Bool) {
         downloadButton.isEnabled = false
         chooseButton.isEnabled = false
         spinner.startAnimation(nil)
@@ -330,7 +334,7 @@ final class RarSettingsViewController: SettingsPaneViewController {
                 chooseButton.isEnabled = true
             }
             do {
-                let installation = try await RarToolInstaller.install { fraction in
+                let installation = try await RarToolInstaller.install(allowUnverified: allowUnverified) { fraction in
                     Task { @MainActor in
                         guard let fraction else { return }
                         self.statusLabel.stringValue =
@@ -339,6 +343,19 @@ final class RarSettingsViewController: SettingsPaneViewController {
                 }
                 refresh()
                 showLicenceNotice(version: installation.version)
+            } catch RarToolInstaller.InstallerError.unverified(let file) {
+                refresh()
+                // A release newer than any record of what it should contain. The
+                // choice is the user's, and the safe answer is the default.
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = L("This download could not be checked.")
+                alert.informativeText = L("%@ is newer than the releases JustArc can verify, and RARLAB publishes no checksums of its own. Installing it means trusting the connection to rarlab.com alone.", file)
+                alert.addButton(withTitle: L("Cancel"))
+                alert.addButton(withTitle: L("Install Anyway"))
+                let answer = view.window != nil
+                    ? await alert.beginSheetModal(for: view.window!) : alert.runModal()
+                if answer == .alertSecondButtonReturn { install(allowUnverified: true) }
             } catch {
                 refresh()
                 let alert = NSAlert()

@@ -30,4 +30,19 @@ public enum MacMetadata {
         guard !last.isEmpty else { return nil }
         return (components + [last]).joined(separator: "/")
     }
+
+    /// The metadata path `path`, rewritten to describe `item` instead of whatever it
+    /// described: "__MACOSX/Docs/._a.txt" redescribing "Docs/b.txt" is
+    /// "__MACOSX/Docs/._b.txt".
+    public static func path(_ path: String, redescribing item: String) -> String? {
+        guard isMetadata(path: path) else { return nil }
+        let original = path.split(separator: "/").map(String.init)
+        var components = item.split(separator: "/").map(String.init)
+        guard !components.isEmpty else { return nil }
+        if original.last?.hasPrefix("._") == true {
+            components[components.count - 1] = "._" + components[components.count - 1]
+        }
+        if original.first == "__MACOSX" { components.insert("__MACOSX", at: 0) }
+        return components.joined(separator: "/")
+    }
 }

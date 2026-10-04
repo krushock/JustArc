@@ -37,8 +37,7 @@ extension ArchiveBrowserViewController {
 
         // An untitled window just stages the files until the user saves.
         guard let archiveURL = session.archiveURL else {
-            session.stage(items: items, into: folder)
-            reloadFromSession()
+            stageInBackground(items, into: folder)
             return
         }
 
@@ -58,6 +57,35 @@ extension ArchiveBrowserViewController {
                 }
             }
             if done != nil { loadArchive() }
+        }
+    }
+
+    /// Adds files to a new archive's list. Finding out what a dropped folder holds
+    /// means walking it, which for a large one takes long enough to freeze the window,
+    /// so the walk happens off the main thread and a sheet says so if it drags on.
+    private func stageInBackground(_ items: [URL], into folder: String) {
+        beginOperation()
+        Task {
+            let scan = Task.detached(priority: .userInitiated) { ArchiveSession.scan(items) }
+            let reveal = Task { @MainActor () -> ProgressWindowController? in
+                // Most drops are read before anyone could have noticed a wait.
+                guard (try? await Task.sleep(nanoseconds: 400_000_000)) != nil, !Task.isCancelled,
+                      let window = self.view.window else { return nil }
+                let panel = ProgressWindowController(title: L("Reading what was added…"),
+                                                     cancellation: CancellationToken())
+                panel.hideCancel()
+                window.beginSheet(panel.window!, completionHandler: nil)
+                return panel
+            }
+            let scanned = await scan.value
+            reveal.cancel()
+            if let panel = await reveal.value {
+                if let sheet = panel.window { view.window?.endSheet(sheet) }
+                panel.finish()
+            }
+            session.stage(scanned: scanned, into: folder)
+            endOperation()
+            reloadFromSession()
         }
     }
 

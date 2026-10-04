@@ -37,7 +37,7 @@ NOT_USER_FACING = {
 }
 
 # Whole files that only ever build command lines or log lines.
-LINT_SKIP_FILES = {"Localized.swift", "Diagnostics.swift", "ProcessRunner.swift",
+LINT_SKIP_FILES = {"Localized.swift", "Diagnostics.swift", "ProcessRunner.swift", "BridgeWording.swift",
                    "MainMenuBuilder.swift"}
 
 

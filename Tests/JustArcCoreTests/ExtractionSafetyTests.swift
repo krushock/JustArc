@@ -51,11 +51,8 @@ final class ExtractionSafetyTests: XCTestCase {
     }
 
     private func everything(under folder: URL) -> [String] {
-        let prefix = folder.path + "/"
-        let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil)
-        var names: [String] = []
-        for case let url as URL in walker! { names.append(String(url.path.dropFirst(prefix.count))) }
-        return names.sorted()
+        guard let walker = FileManager.default.enumerator(atPath: folder.path) else { return [] }
+        return walker.compactMap { $0 as? String }.sorted()
     }
 
     // MARK: - Failure leaves the destination alone
@@ -162,6 +159,155 @@ final class ExtractionSafetyTests: XCTestCase {
         XCTAssertEqual(everything(under: destination), before)
         XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("payload/readme.txt"),
                                   encoding: .utf8), "mine\n")
+    }
+
+    // MARK: - Cancelling undoes the extraction
+
+    /// Enough files that a cancel from the progress callback lands partway through.
+    private func bulkyZip() async throws -> URL {
+        let bulk = root.appendingPathComponent("bulk")
+        try FileManager.default.createDirectory(at: bulk.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        var bytes = [UInt8](repeating: 0, count: 256 * 1024)
+        for index in 0..<400 {
+            for offset in stride(from: 0, to: bytes.count, by: 97) { bytes[offset] = UInt8.random(in: 0...255) }
+            let name = String(format: "file-%03d.bin", index)
+            try Data(bytes).write(to: bulk.appendingPathComponent(index % 2 == 0 ? name : "sub/\(name)"))
+        }
+        let archive = root.appendingPathComponent("bulk.zip")
+        try await engine.create(archive: archive, items: [bulk], options: CompressionOptions(formatKey: "zip", level: 0))
+        return archive
+    }
+
+    private final class CancelAfter: @unchecked Sendable {
+        let token = CancellationToken()
+        private let lock = NSLock()
+        private var calls = 0
+        private let limit: Int
+        init(_ limit: Int) { self.limit = limit }
+        func note() {
+            lock.lock(); calls += 1; let reached = calls >= limit; lock.unlock()
+            if reached { token.cancel() }
+        }
+    }
+
+    func testCancellingPartwayRemovesWhatHadBeenExtracted() async throws {
+        let archive = try await bulkyZip()
+        let destination = root.appendingPathComponent("cancelled")
+        let canceller = CancelAfter(2)
+        do {
+            try await engine.extract(archive: archive, entries: nil, to: destination, password: nil,
+                                     overwrite: .renameNew, flattenPaths: false,
+                                     cancellation: canceller.token, progress: { _ in canceller.note() })
+            XCTFail("the extraction finished before it could be cancelled; make the fixture larger")
+        } catch let error as ArchiveError {
+            XCTAssertEqual(error, .cancelled)
+        }
+        XCTAssertEqual(everything(under: destination), [], "files extracted before the cancel were left behind")
+    }
+
+    func testCancellingARestoresFilesThatHadAlreadyBeenReplaced() async throws {
+        let archive = try await bulkyZip()
+        let destination = root.appendingPathComponent("occupied")
+        try FileManager.default.createDirectory(at: destination.appendingPathComponent("bulk/sub"),
+                                                withIntermediateDirectories: true)
+        // The files the archive writes first, already there with other contents.
+        var mine: [URL] = []
+        for index in 0..<400 where index % 40 == 0 {
+            let url = destination.appendingPathComponent(String(format: "bulk/file-%03d.bin", index))
+            try "mine \(index)\n".write(to: url, atomically: true, encoding: .utf8)
+            mine.append(url)
+        }
+        let before = everything(under: destination)
+
+        for mode in [OverwriteMode.overwrite, .renameExisting] {
+            let canceller = CancelAfter(2)
+            do {
+                try await engine.extract(archive: archive, entries: nil, to: destination, password: nil,
+                                         overwrite: mode, flattenPaths: false,
+                                         cancellation: canceller.token, progress: { _ in canceller.note() })
+                XCTFail("\(mode): the extraction finished before it could be cancelled")
+            } catch let error as ArchiveError {
+                XCTAssertEqual(error, .cancelled)
+            }
+            XCTAssertEqual(everything(under: destination), before, "\(mode): the folder is not as it was")
+            for (offset, url) in mine.enumerated() {
+                XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "mine \(offset * 40)\n",
+                               "\(mode): \(url.lastPathComponent) was not put back")
+            }
+        }
+    }
+
+    // MARK: - Names that cannot both exist on disk
+
+    func testAFileAndAFolderOfOneNameAreBothExtracted() async throws {
+        try python("""
+        import zipfile
+        with zipfile.ZipFile('file-first.zip', 'w') as z:
+            z.writestr('name', 'the file')
+            z.writestr('name/child.txt', 'the child')
+        with zipfile.ZipFile('folder-first.zip', 'w') as z:
+            z.writestr('name/child.txt', 'the child')
+            z.writestr('name', 'the file')
+        """)
+        for (archive, file, child) in [("file-first.zip", "name", "name 2/child.txt"),
+                                       ("folder-first.zip", "name 2", "name/child.txt")] {
+            let destination = root.appendingPathComponent("out-" + archive)
+            try await engine.extract(archive: root.appendingPathComponent(archive), entries: nil, to: destination,
+                                     password: nil, overwrite: .overwrite, flattenPaths: false)
+            XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(file), encoding: .utf8),
+                           "the file", archive)
+            XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(child), encoding: .utf8),
+                           "the child", archive)
+        }
+    }
+
+    func testAFileIsNeverWrittenOverAFolderThatWasAlreadyThere() async throws {
+        try python("""
+        import zipfile
+        with zipfile.ZipFile('clash.zip', 'w') as z:
+            z.writestr('docs', 'a file called docs')
+        """)
+        let destination = root.appendingPathComponent("has-folder")
+        let kept = destination.appendingPathComponent("docs/kept.txt")
+        try FileManager.default.createDirectory(at: kept.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "kept\n".write(to: kept, atomically: true, encoding: .utf8)
+
+        try await engine.extract(archive: root.appendingPathComponent("clash.zip"), entries: nil, to: destination,
+                                 password: nil, overwrite: .overwrite, flattenPaths: false)
+        XCTAssertEqual(try String(contentsOf: kept, encoding: .utf8), "kept\n")
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("docs 2"), encoding: .utf8),
+                       "a file called docs")
+    }
+
+    // MARK: - Damage is not a wrong password
+
+    func testADamagedEncryptedZipIsReportedAsDamaged() async throws {
+        let big = root.appendingPathComponent("payload/big.bin")
+        try Data(repeating: 0x41, count: 200_000).write(to: big)
+        let archive = root.appendingPathComponent("damaged.zip")
+        try await engine.create(archive: archive, items: [big],
+                                options: CompressionOptions(formatKey: "zip", level: 0, password: "sesame"))
+        // Flip bytes in the middle of the stored, encrypted data.
+        var data = try Data(contentsOf: archive)
+        for offset in 100_000..<100_016 { data[offset] ^= 0xFF }
+        try data.write(to: archive)
+
+        do {
+            try await engine.extract(archive: archive, entries: nil, to: root.appendingPathComponent("damaged-out"),
+                                     password: "sesame", overwrite: .overwrite, flattenPaths: false)
+            XCTFail("damaged data was accepted")
+        } catch let error as ArchiveError {
+            XCTAssertFalse(error.isPasswordProblem,
+                           "the right password was called wrong; the user would be asked for it for ever")
+        }
+        // The wrong password is still called what it is.
+        do {
+            try await engine.extract(archive: archive, entries: nil, to: root.appendingPathComponent("damaged-out"),
+                                     password: "nope", overwrite: .overwrite, flattenPaths: false)
+            XCTFail("the wrong password was accepted")
+        } catch let error as ArchiveError {
+            XCTAssertTrue(error.isPasswordProblem, "\(error)")
+        }
     }
 
     // MARK: - Hostile archives

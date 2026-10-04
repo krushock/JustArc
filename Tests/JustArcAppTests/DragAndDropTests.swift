@@ -31,19 +31,20 @@ final class DragAndDropTests: XCTestCase {
 
     // MARK: - Dropping in
 
-    func testFilesDroppedOnTheListOfAnEmptyWindowAreStaged() throws {
+    func testFilesDroppedOnTheListOfAnEmptyWindowAreStaged() async throws {
         let (browser, window) = makeBrowser(archive: nil)
         let table = try XCTUnwrap(firstSubview(of: NSOutlineView.self, in: browser.view))
         let point = table.convert(NSPoint(x: table.bounds.midX, y: table.bounds.midY), to: nil)
 
         XCTAssertTrue(drop([root.appendingPathComponent("payload")], in: window, at: point))
+        try await waitFor { !browser.isBusy }
         XCTAssertEqual(browser.session.stagedRoots.map(\.lastPathComponent), ["payload"])
         XCTAssertTrue(browser.session.hasUnsavedChanges)
     }
 
     /// The message sits on top of the list, not inside it, and it is exactly where
     /// someone reading "Drop files here" lets go.
-    func testFilesDroppedOnTheDropHereMessageAreStaged() throws {
+    func testFilesDroppedOnTheDropHereMessageAreStaged() async throws {
         let (browser, window) = makeBrowser(archive: nil)
         let label = try XCTUnwrap(allSubviews(of: NSTextField.self, in: browser.view)
             .first { $0.stringValue == L("Drop files here to start an archive") })
@@ -51,15 +52,17 @@ final class DragAndDropTests: XCTestCase {
         let point = label.convert(NSPoint(x: label.bounds.midX, y: label.bounds.midY), to: nil)
 
         XCTAssertTrue(drop([root.appendingPathComponent("payload/readme.txt")], in: window, at: point))
+        try await waitFor { !browser.isBusy }
         XCTAssertEqual(browser.session.stagedRoots.map(\.lastPathComponent), ["readme.txt"])
     }
 
-    func testFilesDroppedOnTheStatusBarAreStaged() throws {
+    func testFilesDroppedOnTheStatusBarAreStaged() async throws {
         let (browser, window) = makeBrowser(archive: nil)
         let bar = try XCTUnwrap(firstSubview(of: ArchiveStatusBar.self, in: browser.view))
         let point = bar.convert(NSPoint(x: bar.bounds.midX, y: bar.bounds.midY), to: nil)
 
         XCTAssertTrue(drop([root.appendingPathComponent("payload/readme.txt")], in: window, at: point))
+        try await waitFor { !browser.isBusy }
         XCTAssertEqual(browser.session.stagedRoots.count, 1)
     }
 
@@ -89,6 +92,7 @@ final class DragAndDropTests: XCTestCase {
 
         XCTAssertTrue(drop([archive], in: window, at: point))
         await settle()
+        try await waitFor { !browser.isBusy }
         XCTAssertTrue(opened.isEmpty)
         XCTAssertEqual(browser.session.stagedRoots.count, 2)
     }
@@ -166,7 +170,7 @@ final class DragAndDropTests: XCTestCase {
         try await waitFor { browser.session.tree.node(at: "payload/extra.txt") != nil }
     }
 
-    func testANewArchiveTakesFilesIntoTheFolderBeingShown() throws {
+    func testANewArchiveTakesFilesIntoTheFolderBeingShown() async throws {
         let (browser, window) = makeBrowser(archive: nil)
         browser.session.stage(items: [root.appendingPathComponent("payload")])
         browser.reloadFromSession()
@@ -175,6 +179,7 @@ final class DragAndDropTests: XCTestCase {
         let table = try XCTUnwrap(firstSubview(of: NSOutlineView.self, in: browser.view))
         let point = table.convert(NSPoint(x: table.bounds.midX, y: table.bounds.maxY - 10), to: nil)
         XCTAssertTrue(drop([try makeExtra()], in: window, at: point))
+        try await waitFor { !browser.isBusy }
 
         XCTAssertNotNil(browser.session.tree.node(at: "payload/docs/extra.txt"))
         XCTAssertNil(browser.session.tree.node(at: "extra.txt"))

@@ -95,6 +95,7 @@ public enum ExtractionRunner {
                                         engine: ArchiveEngine,
                                         cancellation: CancellationToken?,
                                         progress: ProgressHandler?) async throws -> [URL] {
+        let before = Neighbours(of: job.roots, in: job.destination)
         try await engine.extract(archive: job.archive,
                                  entries: job.selectedEntries,
                                  to: job.destination,
@@ -103,8 +104,79 @@ public enum ExtractionRunner {
                                  flattenPaths: false,
                                  cancellation: cancellation,
                                  progress: progress)
-        return ExtractionPlan.revealTargets(forArchivePaths: job.roots, in: job.destination)
-            .filter { $0 != job.destination }
+        return before.produced(after: job.fileOverwrite)
+    }
+
+    /// What sat beside each extracted item before extraction, so that what is new
+    /// afterwards can be told from what was already there.
+    ///
+    /// An item whose name was taken comes out as "name 2". Showing the Finder the
+    /// archive's own name would then select the file that was there all along.
+    struct Neighbours {
+        private let roots: [String]
+        private let destination: URL
+        private var namesBefore: [String: Set<String>] = [:]
+
+        init(of roots: [String], in destination: URL) {
+            self.roots = roots
+            self.destination = destination
+            for root in roots {
+                let parent = Self.parent(of: root)
+                guard namesBefore[parent] == nil else { continue }
+                namesBefore[parent] = Self.names(in: destination.appendingPathComponent(parent))
+            }
+        }
+
+        func produced(after overwrite: OverwriteMode) -> [URL] {
+            var result: [URL] = []
+            var seen = Set<URL>()
+            for root in roots {
+                let normalized = ArchivePath.normalize(root)
+                guard !normalized.isEmpty, PathSafety.isSafe(entryPath: normalized) else { continue }
+                let parent = Self.parent(of: normalized)
+                let folder = destination.appendingPathComponent(parent)
+                let name = (normalized as NSString).lastPathComponent
+                var target = folder.appendingPathComponent(name)
+
+                // With "rename the existing one" the new item has the archive's name
+                // and the old one moved; in every other case a new numbered sibling
+                // is the item that was just extracted.
+                if overwrite != .renameExisting, namesBefore[parent]?.contains(name) == true,
+                   let renamed = Self.newestVariant(of: name, in: folder, notIn: namesBefore[parent] ?? []) {
+                    target = renamed
+                }
+                guard PathSafety.itemExists(at: target), seen.insert(target).inserted else { continue }
+                result.append(target)
+                if result.count >= 50 { break }
+            }
+            return result
+        }
+
+        private static func parent(of path: String) -> String {
+            let normalized = ArchivePath.normalize(path)
+            guard let slash = normalized.lastIndex(of: "/") else { return "" }
+            return String(normalized[..<slash])
+        }
+
+        private static func names(in folder: URL) -> Set<String> {
+            Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        }
+
+        /// The highest-numbered "name N.ext" in `folder` that was not there before.
+        private static func newestVariant(of name: String, in folder: URL, notIn before: Set<String>) -> URL? {
+            let ext = (name as NSString).pathExtension
+            let base = ext.isEmpty || name.hasPrefix(".") && name.dropFirst().firstIndex(of: ".") == nil
+                ? name : (name as NSString).deletingPathExtension
+            let suffix = base == name ? "" : "." + ext
+            var best: (number: Int, name: String)?
+            for candidate in names(in: folder).subtracting(before)
+            where candidate.hasPrefix(base + " ") && candidate.hasSuffix(suffix) {
+                let middle = candidate.dropFirst(base.count + 1).dropLast(suffix.count)
+                guard let number = Int(middle), number >= 2 else { continue }
+                if best == nil || number > best!.number { best = (number, candidate) }
+            }
+            return best.map { folder.appendingPathComponent($0.name) }
+        }
     }
 
     /// Leaves the existing folders untouched by dropping everything inside them.
@@ -169,7 +241,26 @@ public enum ExtractionRunner {
                                                            options: [])
         for item in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             let wanted = job.destination.appendingPathComponent(item.lastPathComponent)
-            let target = PathSafety.uniqueURL(for: wanted)
+            var target = PathSafety.uniqueURL(for: wanted)
+
+            // "Keep both" was the answer about folders. A loose file at the top that
+            // collides with a file follows the answer given about files.
+            let isFolder = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            if !isFolder, PathSafety.itemExists(at: wanted), !ExtractionConflicts.isDirectory(wanted) {
+                switch job.fileOverwrite {
+                case .skip:
+                    continue
+                case .overwrite:
+                    _ = try fileManager.replaceItemAt(wanted, withItemAt: item)
+                    produced.append(wanted)
+                    continue
+                case .renameExisting:
+                    try fileManager.moveItem(at: wanted, to: target)
+                    target = wanted
+                case .renameNew:
+                    break
+                }
+            }
             try fileManager.moveItem(at: item, to: target)
             produced.append(target)
         }

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Downloads RARLAB's command line tools on request and installs them into
@@ -17,6 +18,10 @@ public enum RarToolInstaller {
         case archiveUnreadable
         case toolMissingFromArchive
         case toolDidNotRun(String)
+        /// The download differs from the release it claims to be.
+        case checksumMismatch(String)
+        /// Nothing was available to check the download against.
+        case unverified(String)
 
         public var errorDescription: String? {
             switch self {
@@ -30,6 +35,10 @@ public enum RarToolInstaller {
                 return L("The download did not contain the rar tool.")
             case .toolDidNotRun(let detail):
                 return L("The downloaded tool would not run. %@", detail)
+            case .checksumMismatch(let file):
+                return L("%@ is not the file that was published under that name, so it was not installed. Try again later.", file)
+            case .unverified(let file):
+                return L("JustArc has nothing to check %@ against, so it could not confirm the download is genuine.", file)
             }
         }
     }
@@ -37,6 +46,67 @@ public enum RarToolInstaller {
     public struct Installation {
         public let tool: URL
         public let version: String
+        /// False when the user chose to install a download that could not be checked.
+        public let wasVerified: Bool
+    }
+
+    // MARK: - Checking the download
+
+    /// SHA-256 of the releases JustArc knows about, by file name.
+    ///
+    /// RARLAB publishes no checksums of its own and signs the tool ad hoc, so the
+    /// download cannot be checked against its maker. These come from Homebrew's
+    /// cask for rar, which records the hash of each release it packages: a second
+    /// source, independent of rarlab.com, that would have to be wrong in the same way.
+    static let knownChecksums: [String: String] = [
+        "rarmacos-arm-723.tar.gz": "68b393c000758d477fde43c955ff7542f12f76f3f5e87cdda923152fc791bd4d",
+        "rarmacos-x64-723.tar.gz": "da1fb3c3d7748136c9b369b683d574b372cb1ed049a634a81f85d93918346d8f",
+    ]
+
+    /// Where the hash of a release newer than this build of JustArc is looked up.
+    private static let homebrewCask = URL(string: "https://formulae.brew.sh/api/cask/rar.json")!
+
+    /// Reads every "url" and "sha256" pair out of Homebrew's description of the cask,
+    /// which lists the Apple silicon build at the top and the Intel one per macOS
+    /// version under "variations".
+    static func checksums(fromHomebrewCask data: Data) -> [String: String] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        var result: [String: String] = [:]
+        func take(_ entry: [String: Any]) {
+            guard let url = entry["url"] as? String, let hash = entry["sha256"] as? String,
+                  hash.count == 64, let name = URL(string: url)?.lastPathComponent else { return }
+            result[name] = hash.lowercased()
+        }
+        take(root)
+        for case let variation as [String: Any] in (root["variations"] as? [String: Any] ?? [:]).values {
+            take(variation)
+        }
+        return result
+    }
+
+    static func sha256(of file: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    enum Verdict: Equatable {
+        case verified
+        /// A hash is on record for this file name and this is not it.
+        case mismatch
+        /// No hash is on record for this file name anywhere.
+        case unknown
+    }
+
+    /// Compares a download's hash with every record of what it should be.
+    static func verdict(digest: String, fileName: String, published: [String: String]) -> Verdict {
+        let expected = [knownChecksums[fileName], published[fileName]].compactMap { $0 }
+        if expected.contains(digest.lowercased()) { return .verified }
+        return expected.isEmpty ? .unknown : .mismatch
     }
 
     /// arm for Apple silicon, x64 for Intel. RARLAB names its files this way.
@@ -97,8 +167,14 @@ public enum RarToolInstaller {
         return versions.max { ($0.count, $0) < ($1.count, $1) }
     }
 
-    /// Downloads, unpacks and installs the tools, replacing any previous managed copy.
-    public static func install(progress: @escaping @Sendable (Double?) -> Void) async throws -> Installation {
+    /// Downloads, checks, unpacks and installs the tools, replacing any previous
+    /// managed copy.
+    ///
+    /// - Parameter allowUnverified: install even when there is nothing to check the
+    ///   download against, which happens for a release newer than both this build
+    ///   and Homebrew's record. A download that fails a check is never installed.
+    public static func install(allowUnverified: Bool = false,
+                               progress: @escaping @Sendable (Double?) -> Void) async throws -> Installation {
         guard architectureSlug != nil else { throw InstallerError.unsupportedArchitecture }
 
         progress(nil)
@@ -112,6 +188,24 @@ public enum RarToolInstaller {
 
         let tarball = staging.appendingPathComponent("rar.tar.gz")
         try await download(source, to: tarball, progress: progress)
+
+        // Nothing from the download is unpacked, let alone run, until it has been
+        // checked. Homebrew is only asked when this build has no record of its own.
+        let fileName = source.lastPathComponent
+        let digest = try sha256(of: tarball)
+        var result = verdict(digest: digest, fileName: fileName, published: [:])
+        if result != .verified, let (data, _) = try? await URLSession.shared.data(from: homebrewCask) {
+            result = verdict(digest: digest, fileName: fileName, published: checksums(fromHomebrewCask: data))
+        }
+        Diagnostics.log("rar download \(fileName): sha256 \(digest), \(result)")
+        switch result {
+        case .verified:
+            break
+        case .mismatch:
+            throw InstallerError.checksumMismatch(fileName)
+        case .unknown:
+            guard allowUnverified else { throw InstallerError.unverified(fileName) }
+        }
 
         // bsdtar ships with macOS and handles the gzip layer itself.
         let unpack = try await ProcessRunner.run(
@@ -151,7 +245,7 @@ public enum RarToolInstaller {
         UserDefaults.standard.removeObject(forKey: "RARToolPath")
         progress(1)
         Diagnostics.log("installed rar \(version) at \(tool.path)")
-        return Installation(tool: tool, version: version)
+        return Installation(tool: tool, version: version, wasVerified: result == .verified)
     }
 
     public static func removeManagedInstall() throws {
