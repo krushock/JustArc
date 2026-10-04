@@ -241,6 +241,138 @@ final class AddIntoFolderTests: XCTestCase {
         XCTAssertTrue(found.contains("payload/docs/notes.txt"))
     }
 
+    // MARK: - Deleting from a new archive
+
+    private func stagedSession(_ root: URL) -> ArchiveSession {
+        let session = ArchiveSession(archiveURL: nil)
+        session.stage(items: [root.appendingPathComponent("payload")])
+        return session
+    }
+
+    func testDeletingOneFileInsideAStagedFolderHidesJustThatFile() throws {
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let session = stagedSession(root)
+
+        session.markForDeletion(["payload/docs/notes.txt"])
+        XCTAssertNil(session.tree.node(at: "payload/docs/notes.txt"))
+        XCTAssertNotNil(session.tree.node(at: "payload/docs/ünïcode.txt"))
+        XCTAssertNotNil(session.tree.node(at: "payload/readme.txt"))
+        XCTAssertTrue(session.hasUnsavedChanges)
+    }
+
+    func testDeletingAFolderInsideAStagedFolderHidesEverythingInIt() throws {
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let extra = try makeExtra(in: root)
+        let session = stagedSession(root)
+        session.stage(items: [extra], into: "payload/docs")
+
+        session.markForDeletion(["payload/docs"])
+        XCTAssertNil(session.tree.node(at: "payload/docs"))
+        XCTAssertFalse(session.visibleEntries.contains { $0.path.hasPrefix("payload/docs") },
+                       "\(session.visibleEntries.map(\.path))")
+        XCTAssertFalse(session.stagedRoots.contains(extra.standardizedFileURL),
+                       "the file staged into the deleted folder is still queued")
+        XCTAssertNotNil(session.tree.node(at: "payload/readme.txt"))
+    }
+
+    func testDeletedFilesAreLeftOutOfTheSavedArchive() async throws {
+        for name in ["trim.zip", "trim.7z", "trim.tar.gz"] {
+            let root = try FixtureBuilder.makeSourceTree()
+            defer { FixtureBuilder.cleanup(root) }
+            let session = stagedSession(root)
+            session.markForDeletion(["payload/docs/notes.txt"])
+
+            let destination = root.appendingPathComponent(name)
+            try await session.save(to: destination,
+                                   options: CompressionOptions(formatKey: FormatRegistry.format(for: destination)!.key))
+            let found = try await paths(in: destination)
+            XCTAssertFalse(found.contains("payload/docs/notes.txt"), "\(name): \(found.sorted())")
+            XCTAssertTrue(found.contains("payload/docs/ünïcode.txt"), "\(name): \(found.sorted())")
+            XCTAssertTrue(found.contains("payload/readme.txt"), "\(name): \(found.sorted())")
+            XCTAssertEqual(Set(session.visibleEntries.map(\.path)), found,
+                           "\(name): what the window shows after saving is not what was written")
+            engine.release(archive: destination)
+        }
+    }
+
+    func testADeletedFolderIsLeftOutOfTheSavedArchive() async throws {
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let session = stagedSession(root)
+        session.markForDeletion(["payload/docs"])
+
+        let destination = root.appendingPathComponent("nodocs.zip")
+        try await session.save(to: destination, options: CompressionOptions(formatKey: "zip"))
+        let found = try await paths(in: destination)
+        XCTAssertFalse(found.contains { $0.hasPrefix("payload/docs") }, "\(found.sorted())")
+        XCTAssertTrue(found.contains("payload/readme.txt"))
+    }
+
+    func testAFolderEmptiedByDeletionsIsStillWritten() async throws {
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let session = stagedSession(root)
+        session.markForDeletion(["payload/docs/notes.txt", "payload/docs/ünïcode.txt"])
+        XCTAssertNotNil(session.tree.node(at: "payload/docs"), "the folder itself was not deleted")
+
+        let destination = root.appendingPathComponent("emptied.zip")
+        try await session.save(to: destination, options: CompressionOptions(formatKey: "zip"))
+        let listing = try await engine.list(archive: destination, password: nil, encodingCodePage: nil)
+        XCTAssertTrue(listing.entries.contains { $0.path == "payload/docs" && $0.isDirectory },
+                      "\(listing.entries.map(\.path).sorted())")
+        XCTAssertFalse(listing.entries.contains { $0.path.hasPrefix("payload/docs/") })
+    }
+
+    func testEverythingDeletedLeavesNothingToSave() throws {
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let session = stagedSession(root)
+        session.markForDeletion(["payload/docs/notes.txt"])
+        session.markForDeletion(["payload"])
+
+        XCTAssertTrue(session.visibleEntries.isEmpty)
+        XCTAssertFalse(session.hasUnsavedChanges, "an empty new archive still claims unsaved changes")
+    }
+
+    func testAFileStagedAfterADeletionInTheSameFolderIsKept() async throws {
+        let root = try FixtureBuilder.makeSourceTree()
+        defer { FixtureBuilder.cleanup(root) }
+        let session = stagedSession(root)
+        session.markForDeletion(["payload/docs/notes.txt"])
+        // A different file, with the name of the one just deleted.
+        let replacement = root.appendingPathComponent("elsewhere/notes.txt")
+        try FileManager.default.createDirectory(at: replacement.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try "replacement\n".write(to: replacement, atomically: true, encoding: .utf8)
+        session.stage(items: [replacement], into: "payload/docs")
+        XCTAssertNotNil(session.tree.node(at: "payload/docs/notes.txt"))
+
+        let destination = root.appendingPathComponent("swap.zip")
+        try await session.save(to: destination, options: CompressionOptions(formatKey: "zip"))
+        let out = root.appendingPathComponent("out")
+        try await engine.extract(archive: destination, entries: nil, to: out, password: nil,
+                                 overwrite: .overwrite, flattenPaths: false)
+        XCTAssertEqual(try String(contentsOf: out.appendingPathComponent("payload/docs/notes.txt"), encoding: .utf8),
+                       "replacement\n")
+    }
+
+    func testDeletingAFolderInAnOpenArchiveDropsItsContentsOnConversion() async throws {
+        let (root, archive) = try await FixtureBuilder.makeArchive(named: "source.zip")
+        defer { FixtureBuilder.cleanup(root) }
+        let session = ArchiveSession(archiveURL: archive)
+        try await session.load()
+        session.markForDeletion(["payload/docs"])
+        XCTAssertFalse(session.visibleEntries.contains { $0.path.hasPrefix("payload/docs") })
+
+        let destination = root.appendingPathComponent("converted.7z")
+        try await session.save(to: destination, options: CompressionOptions(formatKey: "7z", level: 1))
+        let found = try await paths(in: destination)
+        XCTAssertFalse(found.contains { $0.hasPrefix("payload/docs") }, "\(found.sorted())")
+        XCTAssertTrue(found.contains("payload/readme.txt"))
+    }
+
     /// A disk image is built in one go and cannot be added to, so this takes a
     /// different route from every other format.
     func testADiskImageGetsNestedFilesToo() async throws {

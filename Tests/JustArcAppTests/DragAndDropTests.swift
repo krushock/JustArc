@@ -181,6 +181,25 @@ final class DragAndDropTests: XCTestCase {
         XCTAssertEqual(browser.currentFolderPath, "payload/docs")
     }
 
+    func testDeletingAFileFromANewArchiveTakesItOutOfTheList() throws {
+        let (browser, _) = makeBrowser(archive: nil)
+        browser.session.stage(items: [root.appendingPathComponent("payload")])
+        browser.reloadFromSession()
+        browser.navigate(to: "payload")
+
+        let table = try XCTUnwrap(firstSubview(of: NSOutlineView.self, in: browser.view))
+        let row = try XCTUnwrap((0..<table.numberOfRows).first {
+            (table.item(atRow: $0) as? EntryTree.Node)?.path == "payload/readme.txt" })
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        // No confirmation is shown for a new archive: nothing on disk changes.
+        browser.deleteSelected(nil)
+
+        XCTAssertNil(browser.session.tree.node(at: "payload/readme.txt"))
+        XCTAssertNotNil(browser.session.tree.node(at: "payload/docs/notes.txt"))
+        XCTAssertFalse((0..<table.numberOfRows).contains {
+            (table.item(atRow: $0) as? EntryTree.Node)?.path == "payload/readme.txt" })
+    }
+
     func testAddFilesUsesTheFolderBeingShown() async throws {
         let archive = try await makeZip()
         let (browser, _) = makeBrowser(archive: archive)

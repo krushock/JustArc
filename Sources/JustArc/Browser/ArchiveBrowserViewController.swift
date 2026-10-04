@@ -437,8 +437,12 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         switch action {
         case #selector(addFiles(_:)):
             return session.canModifyContents
-        case #selector(deleteSelected(_:)), #selector(renameSelected(_:)):
+        case #selector(deleteSelected(_:)):
             return session.canModifyContents && !selectedNodesForCommand().isEmpty
+        case #selector(renameSelected(_:)):
+            // Files in a new archive still carry the names they have on disk; there is
+            // nothing to rename until the archive has been saved.
+            return session.canModifyContents && !session.isUntitled && selectedNodesForCommand().count == 1
         case #selector(saveArchive(_:)):
             // Saving in place only means something when there is something unsaved.
             return session.hasUnsavedChanges

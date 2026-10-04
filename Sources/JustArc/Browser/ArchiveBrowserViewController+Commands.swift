@@ -259,6 +259,14 @@ extension ArchiveBrowserViewController {
             return
         }
 
+        // Nothing has been written yet, so taking files back out of a new archive
+        // changes nothing on disk and needs no warning.
+        guard let archiveURL = session.archiveURL else {
+            session.markForDeletion(nodes.map(\.path))
+            reloadFromSession()
+            return
+        }
+
         let alert = NSAlert()
         alert.messageText = nodes.count == 1
             ? L("Delete %@ from the archive?", nodes[0].name)
@@ -268,18 +276,6 @@ extension ArchiveBrowserViewController {
         alert.addButton(withTitle: L("Delete"))
         alert.addButton(withTitle: L("Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        guard let archiveURL = session.archiveURL else {
-            for node in nodes {
-                if let source = session.stagedSource(for: node.path) {
-                    session.unstage(root: source)
-                } else {
-                    session.markForDeletion([node.path])
-                }
-            }
-            reloadFromSession()
-            return
-        }
 
         let entries = nodes.flatMap { $0.descendantEntries() }
         for entry in entries { editedFiles.stopTracking(entryPath: entry.path) }

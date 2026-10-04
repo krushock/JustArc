@@ -153,6 +153,10 @@ public final class ArchiveSession {
         let owned = Set(Self.sourceMap(for: standardized).keys.map { ArchivePath.join(folder, $0) })
         stagedEntries.removeAll { owned.contains($0.path) }
         for path in owned { stagedSources.removeValue(forKey: path) }
+        // Deletions made inside it have nothing left to apply to. Ones that name an
+        // entry of the archive itself still stand.
+        let inArchive = Set(listing.entries.map(\.path))
+        pendingDeletions = pendingDeletions.filter { !owned.contains($0) || inArchive.contains($0) }
 
         // Anything staged into this folder has lost the place it was going to.
         for (other, destination) in stagedFolders
@@ -162,17 +166,36 @@ public final class ArchiveSession {
         rebuild()
     }
 
+    /// Removes items from what the next save will write. A folder takes everything
+    /// in it along, including files staged into it from elsewhere.
     public func markForDeletion(_ paths: [String]) {
         for path in paths {
             let normalized = ArchivePath.normalize(path)
-            pendingDeletions.insert(normalized)
-            // Deleting a staged root simply removes it again.
-            if let source = stagedSources[normalized], stagedRoots.contains(source) {
+            guard !normalized.isEmpty else { continue }
+
+            // Deleting something the user staged whole simply takes it out again.
+            if let source = stagedSources[normalized], stagedRoots.contains(source),
+               archivePath(ofStagedRoot: source) == normalized {
                 unstage(root: source)
-                pendingDeletions.remove(normalized)
+                continue
+            }
+
+            // Anything else is recorded item by item, so that a file staged into the
+            // same place later is not caught by a deletion made before it arrived.
+            let prefix = normalized + "/"
+            pendingDeletions.insert(normalized)
+            for entry in listing.entries + stagedEntries where entry.path.hasPrefix(prefix) {
+                pendingDeletions.insert(entry.path)
+            }
+            for (root, folder) in stagedFolders where folder == normalized || folder.hasPrefix(prefix) {
+                unstage(root: root)
             }
         }
         rebuild()
+    }
+
+    private func archivePath(ofStagedRoot root: URL) -> String {
+        ArchivePath.join(stagedFolder(for: root), root.lastPathComponent)
     }
 
     public func clearPendingChanges() {
@@ -192,6 +215,10 @@ public final class ArchiveSession {
                      options: CompressionOptions,
                      cancellation: CancellationToken? = nil,
                      progress: ProgressHandler? = nil) async throws {
+        defer {
+            if let placeholders { try? FileManager.default.removeItem(at: placeholders) }
+            placeholders = nil
+        }
         let sameFile = destination.standardizedFileURL == archiveURL?.standardizedFileURL
         let format = FormatRegistry.format(for: destination)
         guard let format, format.canWrite else {
@@ -227,23 +254,81 @@ public final class ArchiveSession {
         if !stagedRoots.isEmpty {
             try await CloudFile.materializeAll(stagedRoots, cancellation: cancellation,
                                                progress: progress)
-            for group in stagedGroups() {
+            for group in try stagedGroups() {
                 try await engine.add(items: group.items, to: destination, into: group.folder,
                                      options: options, cancellation: cancellation, progress: progress)
             }
         }
     }
 
-    /// Staged roots gathered by the folder they go into, the archive's root first.
-    private func stagedGroups() -> [(folder: String, items: [URL])] {
+    /// What to write for the staged items, gathered by the folder each goes into, the
+    /// archive's root first.
+    ///
+    /// A staged folder normally goes in whole. When something inside it was deleted
+    /// before saving, it is taken apart instead, only as far down as the deletions
+    /// reach: its remaining contents are added one by one into the folder it would
+    /// have made.
+    private func stagedGroups() throws -> [(folder: String, items: [URL])] {
         var order: [String] = []
         var groups: [String: [URL]] = [:]
+        func emit(_ item: URL, into folder: String) {
+            if groups[folder] == nil { order.append(folder) }
+            groups[folder, default: []].append(item)
+        }
+
         for root in stagedRoots {
             let folder = stagedFolder(for: root)
-            if groups[folder] == nil { order.append(folder) }
-            groups[folder, default: []].append(root)
+            let path = ArchivePath.join(folder, root.lastPathComponent)
+            if hasDeletions(under: path) {
+                try takeApart(root, at: path, parent: folder, emit: emit)
+            } else {
+                emit(root, into: folder)
+            }
         }
         return order.sorted { $0.isEmpty && !$1.isEmpty }.map { ($0, groups[$0] ?? []) }
+    }
+
+    private func hasDeletions(under path: String) -> Bool {
+        let prefix = path + "/"
+        return pendingDeletions.contains { $0.hasPrefix(prefix) }
+    }
+
+    /// Emits what is left of the folder at `directory`, which has deletions inside it.
+    private func takeApart(_ directory: URL, at path: String, parent: String,
+                           emit: (URL, String) -> Void) throws {
+        var emitted = false
+        let children = try FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let childPath = ArchivePath.join(path, child.lastPathComponent)
+            if pendingDeletions.contains(childPath) { continue }
+            let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            let isRealFolder = values?.isDirectory == true && values?.isSymbolicLink != true
+            if isRealFolder, hasDeletions(under: childPath) {
+                try takeApart(child, at: childPath, parent: path, emit: emit)
+            } else {
+                emit(child, path)
+            }
+            emitted = true
+        }
+        // A folder emptied by deletions was not itself deleted, so it is still
+        // written, as the empty folder the list shows.
+        if !emitted {
+            emit(try emptyFolder(named: directory.lastPathComponent), parent)
+        }
+    }
+
+    /// Temporary empty folders standing in for staged folders whose contents were
+    /// all deleted. Removed once the save is over.
+    private var placeholders: URL?
+
+    private func emptyFolder(named name: String) throws -> URL {
+        let base = placeholders ?? FileManager.default.temporaryDirectory
+            .appendingPathComponent("justarc-empty-\(UUID().uuidString)")
+        placeholders = base
+        let folder = base.appendingPathComponent(UUID().uuidString).appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
     }
 
     /// Extracts the current archive to a scratch folder, applies the pending edits there,
@@ -275,7 +360,7 @@ public final class ArchiveSession {
 
         // Staged files may come from a cloud folder and still be placeholders.
         try await CloudFile.materializeAll(stagedRoots, cancellation: cancellation, progress: progress)
-        let groups = stagedGroups()
+        let groups = try stagedGroups()
         roots.append(contentsOf: groups.first { $0.folder.isEmpty }?.items ?? [])
         var nested = groups.filter { !$0.folder.isEmpty }
         guard !roots.isEmpty || !nested.isEmpty else {
