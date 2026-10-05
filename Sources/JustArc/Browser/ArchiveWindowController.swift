@@ -149,7 +149,11 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
     }
 
     /// True while the window is reading, writing or extracting.
-    var isBusy: Bool { browser.isBusy }
+    var isBusy: Bool { browser.isBusy || browser.isLoadingArchive }
+
+    /// True when a file opened from this archive was edited in another app and the
+    /// edit has not gone back into the archive.
+    var hasEditsNotWrittenBack: Bool { !browser.editedFiles.changedEntries().isEmpty }
 
     func loadArchive() { browser.loadArchive() }
     func reloadFromSession() { browser.reloadFromSession() }
@@ -198,6 +202,14 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
             NSSound.beep()
             return false
         }
+        // Edits made in another app live in this window's scratch folder, which goes
+        // with the window. The question is asked now; if the answer starts an update,
+        // the window stays until it is done.
+        let edited = browser.editedFiles.changedEntries()
+        if !edited.isEmpty {
+            browser.offerToUpdate(edited)
+            if browser.isBusy { return false }
+        }
         guard session.hasUnsavedChanges else { return true }
         let alert = NSAlert()
         alert.messageText = L("Save changes to %@?", session.displayName)
@@ -225,6 +237,13 @@ final class ArchiveWindowController: NSWindowController, NSWindowDelegate,
         // moment, so it is not done on the thread the window is closing on.
         let session = self.session
         DispatchQueue.global(qos: .utility).async { session.close() }
+        // An archive still being read, a disk image still attaching, finishes after
+        // the window has gone. The app stays until it has, and it is released then.
+        if browser.isLoadingArchive, let delegate = NSApp.delegate as? AppDelegate {
+            delegate.holdProcess()
+            browser.onSettledAfterClose = { [weak delegate] in delegate?.releaseProcess() }
+        }
+        browser.windowDidClose()
         onClose?()
     }
 }

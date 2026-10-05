@@ -83,8 +83,8 @@ final class EditedFileWatcher {
         tracked.removeAll()
     }
 
-    /// Exposed so the browser can also check at moments of its own choosing.
-    func checkForChanges() {
+    /// The tracked files that differ from when they were opened or last acknowledged.
+    func changedEntries() -> [Tracked] {
         var changed: [Tracked] = []
         for (path, entry) in tracked {
             guard let current = Stamp.read(entry.localURL) else {
@@ -94,7 +94,13 @@ final class EditedFileWatcher {
             }
             if current != entry.stamp { changed.append(entry) }
         }
+        return changed.sorted { $0.entryPath < $1.entryPath }
+    }
+
+    /// Exposed so the browser can also check at moments of its own choosing.
+    func checkForChanges() {
+        let changed = changedEntries()
         guard !changed.isEmpty else { return }
-        onChangesDetected?(changed.sorted { $0.entryPath < $1.entryPath })
+        onChangesDetected?(changed)
     }
 }

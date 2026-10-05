@@ -619,9 +619,27 @@ static UString DecodedName(SZArchive *archive, const UString &path) {
     return Wide(utf8.c_str());
 }
 
+/// Whether the archive itself says what this item's name is written in, which a
+/// code page chosen for the names that do not say must not override. One archive
+/// can hold both kinds: old names from a DOS tool, and names added since.
+static bool NameIsDeclaredUnicode(SZArchive *archive, UInt32 index) {
+    std::string format = archive->formatName;
+    std::transform(format.begin(), format.end(), format.begin(), [](unsigned char c) { return std::tolower(c); });
+    // Formats whose names are Unicode by definition.
+    if (format == "7z" || format == "rar5" || format == "wim" || format == "xar") return true;
+    if (format != "zip") return false;
+    // The zip handler lists an entry's flags and extra fields by name: "UTF8" is
+    // the flag that says the name is UTF-8, "up" Info-ZIP's Unicode path field.
+    UString characteristics;
+    if (!GetStringProperty(archive->archive, index, kpidCharacts, characteristics)) return false;
+    const std::string text = " " + Narrow(characteristics) + " ";
+    return text.find(" UTF8 ") != std::string::npos || text.find(" up ") != std::string::npos;
+}
+
 UString ItemPath(SZArchive *archive, UInt32 index) {
     UString path;
     if (GetStringProperty(archive->archive, index, kpidPath, path) && !path.IsEmpty()) {
+        if (archive->codePage > 0 && NameIsDeclaredUnicode(archive, index)) return path;
         return DecodedName(archive, path);
     }
     return Wide(archive->defaultItemName.c_str());

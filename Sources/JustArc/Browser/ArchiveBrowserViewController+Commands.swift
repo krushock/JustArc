@@ -20,6 +20,11 @@ extension ArchiveBrowserViewController {
             : L("Choose files or folders to add to %@ in %@.",
                 (currentFolderPath as NSString).lastPathComponent, session.displayName)
         guard panel.runModal() == .OK else { return }
+        // Something may have started while the panel was up.
+        guard !isBusy else {
+            NSSound.beep()
+            return
+        }
         add(items: panel.urls)
     }
 
@@ -46,11 +51,15 @@ extension ArchiveBrowserViewController {
         for item in items {
             editedFiles.stopTracking(under: ArchivePath.join(folder, item.lastPathComponent))
         }
+        // Busy from now, not from when the task gets to run; see `beginOperation`.
+        beginOperation()
         Task {
+            defer { endOperation() }
             let done = await runOperation(title: L("Adding to %@", session.displayName)) { cancellation, progress in
                 // Files dragged in from a cloud folder have to be fetched first.
                 try await CloudFile.materializeAll(items, cancellation: cancellation, progress: progress)
-                try await self.withPasswordRetry {
+                try await self.ensurePasswordProven()
+                try await self.withPasswordRetry(proves: false) {
                     try await self.engine.add(items: items, to: archiveURL, into: folder,
                                               options: self.currentCompressionOptions(),
                                               cancellation: cancellation, progress: progress)
@@ -130,11 +139,20 @@ extension ArchiveBrowserViewController {
                                                       roots: archivePaths,
                                                       destination: destination,
                                                       window: view.window) else { return }
+        // Something may have started while those questions were being answered.
+        guard !isBusy else {
+            NSSound.beep()
+            return
+        }
+        let decodesEncrypted = candidates.contains(where: \.isEncrypted)
 
         let allEntries = session.listing.entries
+        // Busy from now, not from when the task gets to run; see `beginOperation`.
+        beginOperation()
         Task {
+            defer { endOperation() }
             let outcome = await runOperation(title: label) { cancellation, progress in
-                try await self.withPasswordRetry {
+                try await self.withPasswordRetry(proves: decodesEncrypted) {
                     let job = ExtractionJob(archive: archiveURL,
                                             destination: destination,
                                             password: self.session.password,
@@ -191,7 +209,9 @@ extension ArchiveBrowserViewController {
         guard let archiveURL = session.archiveURL, session.canModifyContents else { return }
         // Asked again the next time the app comes forward, once the archive is free
         // and the question already on screen has been answered.
-        guard !isBusy, !isOfferingUpdate else { return }
+        // Nor while another question is up: answering this one underneath it could
+        // start a rewrite that the other question then starts a second one on top of.
+        guard !isBusy, !isOfferingUpdate, NSApp.modalWindow == nil else { return }
         isOfferingUpdate = true
         defer { isOfferingUpdate = false }
 
@@ -211,10 +231,15 @@ extension ArchiveBrowserViewController {
             return
         }
 
+        // Counted as work from this moment, not from when the task gets to run: the
+        // window may be asking because it is about to close.
+        beginOperation()
         Task {
-            let done = await runOperation(title: L("Updating %@", session.displayName)) { cancellation, progress in
+            defer { endOperation() }
+            _ = await runOperation(title: L("Updating %@", session.displayName)) { cancellation, progress in
+                try await self.ensurePasswordProven()
                 for entry in changed {
-                    try await self.withPasswordRetry {
+                    try await self.withPasswordRetry(proves: false) {
                         try await self.engine.update(fileAt: entry.localURL,
                                                      entryPath: entry.entryPath,
                                                      in: archiveURL,
@@ -227,7 +252,9 @@ extension ArchiveBrowserViewController {
                     await MainActor.run { self.editedFiles.acknowledge(entryPath: entry.entryPath) }
                 }
             }
-            if done != nil { loadArchive() }
+            // Reloaded however it ended: stopped partway, the archive already holds
+            // the files that were written before the stop.
+            loadArchive()
         }
     }
 
@@ -247,10 +274,10 @@ extension ArchiveBrowserViewController {
     ///   - forEditing: hand back the copy another app may be editing, making one if
     ///     there is none. Otherwise the file is extracted afresh after every change
     ///     to the archive, so what is shown is what the archive holds.
-    ///   - askingForPassword: whether a missing or wrong password may put up the
-    ///     prompt. A drag in progress is no moment for a dialog.
+    ///   - mayAsk: whether a missing or wrong password may put up the prompt. A drag
+    ///     in progress is no moment for a dialog; a remembered password is still tried.
     func materialize(node: EntryTree.Node, quiet: Bool = false, forEditing: Bool = false,
-                     askingForPassword: Bool = true) async -> URL? {
+                     mayAsk: Bool = true) async -> URL? {
         if let staged = session.stagedSource(for: node.path) { return staged }
         guard let archiveURL = session.archiveURL, let entry = node.entry else { return nil }
 
@@ -259,15 +286,21 @@ extension ArchiveBrowserViewController {
             return open
         }
         let root = forEditing ? editingRoot() : viewingRoot()
-        let cached = root.appendingPathComponent(entry.path)
+        // An entry can be named anything, "../../x" included. The engine refuses to
+        // extract such a thing, and nothing outside this folder may stand in for it.
+        guard let cached = try? PathSafety.resolvedURL(for: entry.path, in: root) else {
+            if !quiet { present(ArchiveError.unsafeEntry(entry.path)) }
+            return nil
+        }
         if !forEditing, FileManager.default.fileExists(atPath: cached.path) { return cached }
 
+        beginOperation()
+        defer { endOperation() }
         do {
-            let extract = {
+            return try await withPasswordRetry(proves: entry.isEncrypted, mayAsk: mayAsk) {
                 try await self.engine.extractSingle(archive: archiveURL, entry: entry, to: root,
                                                     password: self.session.password)
             }
-            return askingForPassword ? try await withPasswordRetry(extract) : try await extract()
         } catch let error as ArchiveError where error == .cancelled {
             return nil
         } catch {
@@ -283,17 +316,24 @@ extension ArchiveBrowserViewController {
     /// file failing to decode. A password remembered for this path is tried once
     /// before anyone is asked, and forgotten if it no longer works; one typed in is
     /// only put in the keychain after it has decoded something.
-    func withPasswordRetry<T>(_ work: () async throws -> T) async throws -> T {
+    ///
+    /// - Parameters:
+    ///   - proves: whether the work decodes encrypted data, so that its success shows
+    ///     the password to be right. Adding or deleting does not.
+    ///   - mayAsk: false to try a remembered password and otherwise give up quietly.
+    func withPasswordRetry<T>(proves: Bool, mayAsk: Bool = true,
+                              _ work: () async throws -> T) async throws -> T {
         var attempt = 0
         var triedKeychain = false
         var usingKeychainPassword = false
         while true {
             do {
                 let result = try await work()
-                if session.listing.containsEncryptedEntries { rememberPasswordIfProven() }
+                if proves, session.listing.containsEncryptedEntries { notePasswordProven() }
                 return result
             } catch let error as ArchiveError where error.isPasswordProblem {
                 guard let url = session.archiveURL else { throw error }
+                let refused = session.password
                 if !triedKeychain {
                     triedKeychain = true
                     if let stored = KeychainStore.password(for: url), stored != session.password {
@@ -305,18 +345,50 @@ extension ArchiveBrowserViewController {
                 if usingKeychainPassword {
                     KeychainStore.remove(for: url)
                     usingKeychainPassword = false
-                    session.password = nil
+                    session.password = provenPassword
+                }
+                guard mayAsk else {
+                    session.password = provenPassword
+                    throw error
                 }
                 guard let response = PasswordPrompt.ask(archiveName: session.displayName,
                                                         window: view.window,
-                                                        retry: attempt > 0 || session.password != nil) else {
+                                                        retry: attempt > 0 || refused != nil) else {
+                    // Back to the last password known to be right. Left in place,
+                    // the one just refused would encrypt whatever is added next.
+                    session.password = provenPassword
                     passwordToRemember = nil
+                    passwordPromptWasCancelled = true
                     throw ArchiveError.cancelled
                 }
                 session.password = response.password
                 passwordToRemember = response.rememberInKeychain ? response.password : nil
                 attempt += 1
             }
+        }
+    }
+
+    /// Makes sure the archive's password is known, and right, before anything is
+    /// written into it.
+    ///
+    /// Adding to a zip never needs the password of what is already there, so nothing
+    /// would stop a file going into an encrypted archive unprotected, or under a
+    /// mistyped password that opens nothing else in it. One small encrypted entry is
+    /// decoded to settle the matter, asking for the password if need be.
+    func ensurePasswordProven() async throws {
+        guard let archiveURL = session.archiveURL, session.listing.containsEncryptedEntries else { return }
+        if let proven = provenPassword, proven == session.password { return }
+
+        let encrypted = session.listing.entries.filter { $0.isEncrypted && !$0.isDirectory }
+        // An empty file has nothing to decode; prefer one that does.
+        guard let probe = encrypted.filter({ $0.size > 0 }).min(by: { $0.size < $1.size }) ?? encrypted.first else {
+            return
+        }
+        let scratch = scratchRoot().appendingPathComponent("probe-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        _ = try await withPasswordRetry(proves: true) {
+            try await self.engine.extractSingle(archive: archiveURL, entry: probe, to: scratch,
+                                                password: self.session.password)
         }
     }
 
@@ -328,7 +400,9 @@ extension ArchiveBrowserViewController {
 
         // A drag-specific spot, so files opened for editing earlier are not overwritten.
         let root = scratchRoot().appendingPathComponent("drag-\(UUID().uuidString)")
-        let produced = root.appendingPathComponent(node.path)
+        guard let produced = try? PathSafety.resolvedURL(for: node.path, in: root) else { return nil }
+        beginOperation()
+        defer { endOperation() }
         do {
             let entries = node.descendantEntries()
             if !entries.isEmpty {
@@ -373,13 +447,21 @@ extension ArchiveBrowserViewController {
         alert.addButton(withTitle: L("Delete"))
         alert.addButton(withTitle: L("Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        // Something may have started while the question was up.
+        guard !isBusy else {
+            NSSound.beep()
+            return
+        }
 
         let entries = nodes.flatMap { $0.descendantEntries() }
         for node in nodes { editedFiles.stopTracking(under: node.path) }
+        // Busy from now, not from when the task gets to run; see `beginOperation`.
+        beginOperation()
         Task {
+            defer { endOperation() }
             let done = await runOperation(title: L("Deleting from %@", session.displayName),
                                           cancellable: false) { _, _ in
-                try await self.withPasswordRetry {
+                try await self.withPasswordRetry(proves: false) {
                     try await self.engine.delete(entries: entries, from: archiveURL,
                                                  password: self.session.password)
                 }
@@ -430,14 +512,21 @@ extension ArchiveBrowserViewController {
             return
         }
         let newPath = ArchivePath.join(entry.parentPath, newName)
+        guard !isBusy else {
+            NSSound.beep()
+            return
+        }
 
         // Copies open for editing were made under the old name, files inside a
         // renamed folder included.
         editedFiles.stopTracking(under: entry.path)
+        // Busy from now, not from when the task gets to run; see `beginOperation`.
+        beginOperation()
         Task {
+            defer { endOperation() }
             let done = await runOperation(title: L("Renaming in %@", session.displayName),
                                           cancellable: false) { _, _ in
-                try await self.withPasswordRetry {
+                try await self.withPasswordRetry(proves: false) {
                     try await self.engine.rename(entry: entry, to: newPath,
                                                  in: archiveURL, password: self.session.password)
                 }
@@ -450,9 +539,12 @@ extension ArchiveBrowserViewController {
 
     @objc func testArchive(_ sender: Any?) {
         guard let archiveURL = session.archiveURL else { return }
+        // Busy from now, not from when the task gets to run; see `beginOperation`.
+        beginOperation()
         Task {
+            defer { endOperation() }
             let report = await runOperation(title: L("Testing %@", session.displayName)) { cancellation, progress in
-                try await self.withPasswordRetry {
+                try await self.withPasswordRetry(proves: true) {
                     try await self.engine.test(archive: archiveURL, password: self.session.password,
                                                cancellation: cancellation, progress: progress)
                 }
@@ -567,10 +659,9 @@ extension ArchiveBrowserViewController {
         // get one kind of archive under another kind's name.
         let format = accessory.selectedFormat
         var url = chosen
-        if FormatRegistry.format(for: chosen)?.key != format.key {
-            let stem = FormatRegistry.baseName(for: chosen)
-            url = chosen.deletingLastPathComponent()
-                .appendingPathComponent("\(stem.isEmpty ? L("Archive") : stem).\(format.extensions[0])")
+        let name = FormatRegistry.saveName(typed: chosen.lastPathComponent, format: format)
+        if name != chosen.lastPathComponent {
+            url = chosen.deletingLastPathComponent().appendingPathComponent(name)
             if PathSafety.itemExists(at: url) {
                 let alert = NSAlert()
                 alert.alertStyle = .warning
@@ -616,9 +707,16 @@ extension ArchiveBrowserViewController {
             completion?(false)
             return
         }
+        // Busy from now, and no longer by the time the caller hears how it went:
+        // what it does next may be to close the window.
+        beginOperation()
         Task {
+            let rewritesOpenArchive = session.archiveURL != nil
             let done: Void? = await runOperation(title: L("Saving %@", url.lastPathComponent)) { cancellation, progress in
-                try await self.withPasswordRetry {
+                // Saving in place adds to the archive as it is; saving afresh reads
+                // every file out of it first, which is its own proof of the password.
+                if !rebuild { try await self.ensurePasswordProven() }
+                try await self.withPasswordRetry(proves: rebuild && rewritesOpenArchive) {
                     try await self.session.save(to: url, options: options, rebuild: rebuild,
                                                 cancellation: cancellation, progress: progress)
                 }
@@ -627,11 +725,14 @@ extension ArchiveBrowserViewController {
                 // A split archive is opened through its first volume, not the name typed.
                 let written = session.archiveURL ?? url
                 RecentsRecorder.note(written)
-                // Open copies were extracted from the archive as it was before.
+                // Open copies were extracted from the archive as it was before, and so
+                // was everything extracted for viewing.
                 editedFiles.removeAll()
+                archiveDidChangeOnDisk()
                 onArchiveChange?(written)
                 reloadFromSession()
             }
+            endOperation()
             completion?(done != nil)
         }
     }

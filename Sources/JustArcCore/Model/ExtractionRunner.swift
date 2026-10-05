@@ -68,19 +68,8 @@ public enum ExtractionRunner {
                                                     cancellation: cancellation, progress: progress)
 
         case .replace where !job.folderConflicts.isEmpty:
-            var trashed: [String] = []
-            for folder in job.folderConflicts {
-                let existing = try PathSafety.resolvedURL(for: folder, in: job.destination)
-                guard PathSafety.itemExists(at: existing) else { continue }
-                // Whatever the archive calls its entries, the folder being extracted
-                // into is never one of the things replaced.
-                guard existing.standardizedFileURL != PathSafety.canonicalRoot(job.destination) else { continue }
-                try moveToTrashOrDelete(existing)
-                trashed.append(folder)
-            }
-            let produced = try await extractDirectly(job, engine: engine,
-                                                     cancellation: cancellation, progress: progress)
-            return ExtractionOutcome(producedItems: produced, skippedFolders: [], trashedFolders: trashed)
+            return try await extractReplacing(job, engine: engine,
+                                              cancellation: cancellation, progress: progress)
 
         case .merge, .replace, .keepBoth, .skip:
             let produced = try await extractDirectly(job, engine: engine,
@@ -107,6 +96,76 @@ public enum ExtractionRunner {
         return before.produced(after: job.fileOverwrite)
     }
 
+    /// Replaces the folders that are in the way, giving them up only once there is
+    /// something to replace them with.
+    ///
+    /// Each is first moved aside, next to where it was. If the extraction then
+    /// writes nothing in its place, because it was cancelled, or the password was
+    /// wrong, or the archive could not be read, it is moved back. Only when the new
+    /// folder is there does the old one go to the Trash.
+    private static func extractReplacing(_ job: ExtractionJob,
+                                         engine: ArchiveEngine,
+                                         cancellation: CancellationToken?,
+                                         progress: ProgressHandler?) async throws -> ExtractionOutcome {
+        let fileManager = FileManager.default
+        var aside: [(folder: String, original: URL, holder: URL)] = []
+
+        /// Settles every folder that was moved aside, whichever way things went.
+        func settle() -> [String] {
+            var trashed: [String] = []
+            for item in aside {
+                let kept = item.holder.appendingPathComponent(item.original.lastPathComponent)
+                if PathSafety.itemExists(at: item.original) {
+                    // Something took its place, which is what Replace asked for.
+                    if (try? trash(kept)) != nil {
+                        trashed.append(item.folder)
+                    } else {
+                        // It could not be thrown away, so it is not: it stays,
+                        // under a name of its own beside the new one.
+                        try? fileManager.moveItem(at: kept, to: PathSafety.uniqueURL(for: item.original))
+                    }
+                } else {
+                    try? fileManager.moveItem(at: kept, to: item.original)
+                }
+                try? fileManager.removeItem(at: item.holder)
+            }
+            return trashed
+        }
+
+        do {
+            for folder in job.folderConflicts {
+                let existing = try PathSafety.resolvedURL(for: folder, in: job.destination)
+                guard ExtractionConflicts.isDirectory(existing) else { continue }
+                // Whatever the archive calls its entries, the folder being extracted
+                // into is never one of the things replaced.
+                guard existing.standardizedFileURL != PathSafety.canonicalRoot(job.destination) else { continue }
+                // Nor is a folder given up for a file.
+                guard ExtractionConflicts.holdsFolder(ArchivePath.normalize(folder), in: job.allEntries) else { continue }
+
+                // In a folder of its own, so that it keeps its name, which is the
+                // name it will have in the Trash.
+                let holder = existing.deletingLastPathComponent()
+                    .appendingPathComponent(".justarc-replaced-\(UUID().uuidString)")
+                try fileManager.createDirectory(at: holder, withIntermediateDirectories: false)
+                do {
+                    try fileManager.moveItem(at: existing, to: holder.appendingPathComponent(existing.lastPathComponent))
+                } catch {
+                    try? fileManager.removeItem(at: holder)
+                    throw ArchiveError.ioFailure(
+                        L("%@ could not be moved out of the way, so it was left as it is. %@",
+                          existing.lastPathComponent, error.localizedDescription))
+                }
+                aside.append((folder, existing, holder))
+            }
+            let produced = try await extractDirectly(job, engine: engine,
+                                                     cancellation: cancellation, progress: progress)
+            return ExtractionOutcome(producedItems: produced, skippedFolders: [], trashedFolders: settle())
+        } catch {
+            _ = settle()
+            throw error
+        }
+    }
+
     /// What sat beside each extracted item before extraction, so that what is new
     /// afterwards can be told from what was already there.
     ///
@@ -116,12 +175,15 @@ public enum ExtractionRunner {
         private let roots: [String]
         private let destination: URL
         private var namesBefore: [String: Set<String>] = [:]
+        /// The names being extracted into each folder.
+        private var rootNames: [String: Set<String>] = [:]
 
         init(of roots: [String], in destination: URL) {
             self.roots = roots
             self.destination = destination
             for root in roots {
                 let parent = Self.parent(of: root)
+                rootNames[parent, default: []].insert((ArchivePath.normalize(root) as NSString).lastPathComponent)
                 guard namesBefore[parent] == nil else { continue }
                 namesBefore[parent] = Self.names(in: destination.appendingPathComponent(parent))
             }
@@ -141,8 +203,12 @@ public enum ExtractionRunner {
                 // With "rename the existing one" the new item has the archive's name
                 // and the old one moved; in every other case a new numbered sibling
                 // is the item that was just extracted.
+                // A numbered sibling that the archive itself holds, "Docs 2" beside
+                // "Docs", is that item and not this one renamed.
+                let others = rootNames[parent] ?? []
                 if overwrite != .renameExisting, namesBefore[parent]?.contains(name) == true,
-                   let renamed = Self.newestVariant(of: name, in: folder, notIn: namesBefore[parent] ?? []) {
+                   let renamed = Self.newestVariant(of: name, in: folder,
+                                                    notIn: (namesBefore[parent] ?? []).union(others)) {
                     target = renamed
                 }
                 guard PathSafety.itemExists(at: target), seen.insert(target).inserted else { continue }
@@ -235,16 +301,32 @@ public enum ExtractionRunner {
 
         if cancellation?.isCancelled == true { throw ArchiveError.cancelled }
 
+        // Each item goes in beside the one of its name, at whatever depth that is:
+        // "docs" picked from inside "payload" becomes "payload/docs 2", not a second
+        // "payload" at the top.
+        var items: [(staged: URL, wanted: URL)] = []
+        var seen = Set<String>()
+        for root in job.roots {
+            let path = ArchivePath.normalize(root)
+            guard !path.isEmpty, PathSafety.isSafe(entryPath: path), seen.insert(path).inserted else { continue }
+            let staged = staging.appendingPathComponent(path)
+            guard PathSafety.itemExists(at: staged) else { continue }
+            items.append((staged, job.destination.appendingPathComponent(path)))
+        }
+        if items.isEmpty {
+            // Nothing said what was being extracted, so it is whatever came out.
+            let contents = try fileManager.contentsOfDirectory(at: staging, includingPropertiesForKeys: nil)
+            items = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
+                .map { ($0, job.destination.appendingPathComponent($0.lastPathComponent)) }
+        }
+
         var produced: [URL] = []
-        let contents = try fileManager.contentsOfDirectory(at: staging,
-                                                           includingPropertiesForKeys: nil,
-                                                           options: [])
-        for item in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            let wanted = job.destination.appendingPathComponent(item.lastPathComponent)
+        for (item, wanted) in items {
+            try fileManager.createDirectory(at: wanted.deletingLastPathComponent(), withIntermediateDirectories: true)
             var target = PathSafety.uniqueURL(for: wanted)
 
-            // "Keep both" was the answer about folders. A loose file at the top that
-            // collides with a file follows the answer given about files.
+            // "Keep both" was the answer about folders. A loose file that collides
+            // with a file follows the answer given about files.
             let isFolder = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
             if !isFolder, PathSafety.itemExists(at: wanted), !ExtractionConflicts.isDirectory(wanted) {
                 switch job.fileOverwrite {
@@ -266,6 +348,10 @@ public enum ExtractionRunner {
         }
         return ExtractionOutcome(producedItems: produced, skippedFolders: [], trashedFolders: [])
     }
+
+    /// Moves a replaced folder to the Trash. Replaceable, so that the tests can see
+    /// what would have gone there without filling the Trash of whoever runs them.
+    nonisolated(unsafe) static var trash: (URL) throws -> Void = moveToTrashOrDelete
 
     /// Replacing a folder should be recoverable, so it goes to the Trash rather than
     /// being deleted outright. Only a volume that has no Trash falls back to removal;

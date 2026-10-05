@@ -100,6 +100,7 @@ final class BridgeArchive {
                  overwrite: OverwriteMode,
                  flatten: Bool,
                  testOnly: Bool,
+                 keepLinksAsStored: Bool = false,
                  progress: BridgeProgress) throws -> SZExtractSummary {
         var error = SZError()
         var summary = SZExtractSummary()
@@ -109,7 +110,8 @@ final class BridgeArchive {
                                                password: passwordPointer,
                                                overwrite: overwrite.bridgeValue,
                                                flatten: flatten,
-                                               testOnly: testOnly)
+                                               testOnly: testOnly,
+                                               keepLinksAsStored: keepLinksAsStored)
                 return withExtendedLifetime(progress) {
                     if let indices {
                         return indices.withUnsafeBufferPointer { buffer in

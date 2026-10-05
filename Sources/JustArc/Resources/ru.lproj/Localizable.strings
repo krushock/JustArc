@@ -8,6 +8,7 @@
 "%@ could not be created. %@" = "Не удалось создать %@. %@";
 "%@ could not be extracted." = "Не удалось извлечь %@.";
 "%@ could not be extracted: %@." = "Не удалось извлечь %@: %@.";
+"%@ could not be moved out of the way, so it was left as it is. %@" = "Не удалось отодвинуть «%@», поэтому объект оставлен без изменений. %@";
 "%@ could not be moved to the Trash, so it was left as it is. %@" = "Не удалось переместить «%@» в Корзину, поэтому объект оставлен без изменений. %@";
 "%@ could not be opened. %@" = "Не удалось открыть %@. %@";
 "%@ could not be read. %@" = "Не удалось прочитать %@. %@";
@@ -142,6 +143,7 @@
 "File Types" = "Типы файлов";
 "Filename Encoding" = "Кодировка имён файлов";
 "Files" = "Файлы";
+"Files you opened from an archive were edited and not written back. Quit anyway?" = "Файлы, открытые из архива, были изменены и не записаны обратно. Всё равно завершить?";
 "Files: %@" = "Файлов: %@";
 "Files: %d" = "Файлов: %d";
 "Filter" = "Фильтр";
@@ -230,6 +232,7 @@
 "RAR %@ is ready." = "RAR %@ готов к работе.";
 "RAR %@ — %@" = "RAR %@ — %@";
 "RAR archives can be created once RARLAB's tool is installed from Settings." = "Архивы RAR можно будет создавать после установки утилиты RARLAB в настройках.";
+"RAR reads the “?” and “*” in “%@” as wildcards, and would have changed other items along with it. Nothing was changed." = "RAR воспринимает «?» и «*» в имени «%@» как шаблон и изменил бы вместе с ним другие объекты. Ничего не изменено.";
 "RARLAB does not publish a build for this processor." = "RARLAB не выпускает сборку для этого процессора.";
 "Read Licence" = "Прочитать лицензию";
 "Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is checked against a published checksum before it is installed, in Application Support, not inside the app." = "Чтение RAR работает всегда. Для записи нужна утилита самой RARLAB, которую JustArc включать не вправе. Она загружается с rarlab.com и является пробной версией по лицензии RARLAB, а не JustArc. Перед установкой загрузка сверяется с опубликованной контрольной суммой; утилита устанавливается в Application Support, а не внутрь приложения.";
@@ -278,6 +281,7 @@
 "Skip it" = "Пропускать её";
 "Skip the new file" = "Пропускать новый файл";
 "Solid: %@" = "Непрерывный: %@";
+"Split Archive" = "Многотомный архив";
 "Split into:" = "Разбить на тома:";
 "Split the archive into volumes of this size, for example 100m or 1.5g." = "Разбить архив на тома такого размера, например 100m или 1.5g.";
 "SquashFS" = "SquashFS";
@@ -285,6 +289,7 @@
 "Store" = "Без сжатия";
 "Store (no compression)" = "Без сжатия";
 "Supported Formats" = "Поддерживаемые форматы";
+"Switch to the archive's window to be asked about updating it. Quitting discards the edits." = "Перейдите в окно архива, чтобы получить предложение обновить его. При завершении правки будут потеряны.";
 "TAR + BZip2" = "TAR + BZip2";
 "TAR + GZip" = "TAR + GZip";
 "TAR + XZ" = "TAR + XZ";
@@ -301,6 +306,7 @@
 "The archive could not be finished on disk." = "Не удалось завершить запись архива на диск.";
 "The archive could not be written: %@." = "Не удалось записать архив: %@.";
 "The archive engine failed with code %d." = "Архивный движок завершился с кодом %d.";
+"The archive holds names that differ only in capitalisation, which a folder on this Mac cannot. It cannot be saved in this format." = "В архиве есть имена, различающиеся только регистром букв, а папка на этом Mac такие хранить не может. Сохранить его в этом формате нельзя.";
 "The archive or the files being written now will be left incomplete." = "Архив или файлы, которые сейчас записываются, останутся незавершёнными.";
 "The bundled 7-Zip library could not be loaded from Contents/Frameworks. Reinstall JustArc, or set JUSTARC_7Z_LIBRARY to a 7z.so when running from a build folder." = "Не удалось загрузить встроенную библиотеку 7-Zip из Contents/Frameworks. Переустановите JustArc или задайте переменную JUSTARC_7Z_LIBRARY с путём к 7z.so при запуске из папки сборки.";
 "The bundled archive engine is missing at %@." = "Встроенный архивный движок отсутствует: %@.";
@@ -335,6 +341,7 @@
 "This download could not be checked." = "Эту загрузку не удалось проверить.";
 "This format takes no settings." = "У этого формата нет настроек.";
 "Time left" = "Осталось времени";
+"Too many items to delete from a RAR archive at once when one of their names ends in a space or holds a line break. Delete that one separately." = "Слишком много объектов для удаления из архива RAR за один раз, когда имя одного из них заканчивается пробелом или содержит перенос строки. Удалите этот объект отдельно.";
 "Total %@ files, %@" = "Всего файлов: %@, %@";
 "Total 1 file, %@" = "Всего 1 файл, %@";
 "Traditional Chinese (Big5)" = "Традиционная китайская (Big5)";
@@ -398,4 +405,7 @@
 "there was not enough memory" = "не хватило памяти";
 "this format" = "этот формат";
 "“%@” already exists. Do you want to replace it?" = "«%@» уже существует. Заменить?";
+"“%@” and “%@” differ only in capitalisation. This Mac's disk cannot hold both, so the archive cannot be rewritten here without losing one. Its contents can still be changed in place." = "«%@» и «%@» различаются только регистром букв. Диск этого Mac не может хранить оба имени, поэтому архив нельзя переписать здесь, не потеряв один из объектов. Его содержимое по-прежнему можно менять на месте.";
 "“%@” cannot be used as a name." = "Имя «%@» использовать нельзя.";
+"“%@” differs from too many other names only in capitalisation for the archive to be rewritten on this Mac's disk." = "«%@» отличается только регистром букв от слишком многих других имён, чтобы архив можно было переписать на диске этого Mac.";
+"“%@” is a name macOS keeps for its own bookkeeping, and files with it are not shown. Choose another name." = "Имя «%@» macOS использует для служебных данных, и файлы с таким именем не отображаются. Выберите другое имя.";

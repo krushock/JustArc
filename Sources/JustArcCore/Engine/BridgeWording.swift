@@ -12,14 +12,35 @@ extension BridgeError {
     static func localized(_ message: String) -> String {
         if let whole = sentences[message] { return whole }
 
+        // What the bridge says of its own accord, with the reason after the colon.
+        let statements: [(prefix: String, format: (String) -> String)] = [
+            ("7-Zip could not write the archive: ", { why in L("The archive could not be written: %@.", reason(why)) }),
+            ("The format rejected a setting: ", { why in L("The format rejected a setting: %@.", reason(why)) }),
+        ]
+        for statement in statements where message.hasPrefix(statement.prefix) {
+            return statement.format(String(message.dropFirst(statement.prefix.count)))
+        }
+
+        // "path/in/archive: what went wrong", from an item that failed. Looked for
+        // before the shapes below, because an item can be called anything, "Cannot
+        // open the door.txt" included, and what gives it away is the reason, which
+        // is always one of a few. The name may hold a colon of its own, so every
+        // colon is tried, and the first with a reason after it is the one.
+        var search = message.startIndex..<message.endIndex
+        while let colon = message.range(of: ": ", range: search) {
+            let why = String(message[colon.upperBound...])
+            if reasons[why] != nil || reasons.keys.contains(where: { why.hasPrefix($0 + ": ") }) {
+                return L("%@ could not be extracted: %@.", String(message[..<colon.lowerBound]), reason(why))
+            }
+            search = colon.upperBound..<message.endIndex
+        }
+
         let shapes: [(prefix: String, format: (String, String) -> String)] = [
             ("Is not an archive: ", { path, _ in L("%@ is not an archive JustArc can read.", name(path)) }),
             ("Cannot open ", { path, why in L("%@ could not be opened. %@", name(path), sentence(why)) }),
             ("Cannot read the link ", { path, _ in L("The link %@ could not be read.", name(path)) }),
             ("Cannot read ", { path, why in L("%@ could not be read. %@", name(path), sentence(why)) }),
             ("Cannot create ", { path, why in L("%@ could not be created. %@", name(path), sentence(why)) }),
-            ("7-Zip could not write the archive: ", { why, _ in L("The archive could not be written: %@.", reason(why)) }),
-            ("The format rejected a setting: ", { why, _ in L("The format rejected a setting: %@.", reason(why)) }),
         ]
         for shape in shapes where message.hasPrefix(shape.prefix) {
             let rest = String(message.dropFirst(shape.prefix.count))
@@ -28,15 +49,6 @@ extension BridgeError {
                 return shape.format(String(rest[..<colon.lowerBound]), String(rest[colon.upperBound...]))
             }
             return shape.format(rest, "")
-        }
-
-        // "path/in/archive: what went wrong", from an item that failed.
-        if let colon = message.range(of: ": ") {
-            let item = String(message[..<colon.lowerBound])
-            let why = String(message[colon.upperBound...])
-            if reasons[why] != nil || reasons.keys.contains(where: { why.hasPrefix($0 + ": ") }) {
-                return L("%@ could not be extracted: %@.", item, reason(why))
-            }
         }
         return reasons[message] ?? message
     }

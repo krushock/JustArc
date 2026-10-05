@@ -62,8 +62,9 @@ extension ArchiveEntry {
     }
 }
 
-extension UInt64 {
-    /// Addition that stops at the maximum instead of trapping.
+public extension UInt64 {
+    /// Addition that stops at the maximum instead of trapping. Sizes come from the
+    /// archive, which can declare whatever it likes.
     func addingSaturating(_ other: UInt64) -> UInt64 {
         let (sum, overflow) = addingReportingOverflow(other)
         return overflow ? .max : sum
@@ -81,6 +82,24 @@ public enum ArchivePath {
             .split(separator: "/", omittingEmptySubsequences: true)
             .filter { $0 != "." }
             .joined(separator: "/")
+    }
+
+    /// The deepest a path can usefully be. A path on macOS is at most 1024 bytes,
+    /// so nothing with more folders above it than this could ever be extracted.
+    public static let maximumDepth = 512
+
+    /// Whether a path has more folders in it than any real path can.
+    ///
+    /// Such a path is not a file anyone packed. A zip can carry one 32,000 folders
+    /// deep and a tar has no limit, and the tree that the list is drawn from is
+    /// walked by functions that call themselves once for each level.
+    public static func isTooDeep(_ path: String) -> Bool {
+        var slashes = 0
+        for byte in path.utf8 where byte == UInt8(ascii: "/") {
+            slashes += 1
+            if slashes >= maximumDepth { return true }
+        }
+        return false
     }
 
     public static func join(_ parent: String, _ child: String) -> String {

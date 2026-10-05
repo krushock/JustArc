@@ -9,6 +9,10 @@ struct MountedImage: Sendable {
     let mountPoints: [URL]
     /// The temporary directory the volumes were mounted under.
     let mountRoot: URL
+    /// True when someone else attached the image, the user in the Finder for one,
+    /// and it is only being read where they mounted it. Such an image is theirs
+    /// to eject, and is never detached from here.
+    var isBorrowed = false
 }
 
 /// Tracks attached images so they can be detached on window close and on quit.
@@ -181,11 +185,13 @@ public struct DMGEngine: ArchiveEngine {
             let candidate = components.isEmpty
                 ? mountPoint
                 : mountPoint.appendingPathComponent(components.joined(separator: "/"))
-            return FileManager.default.fileExists(atPath: candidate.path) ? candidate : nil
+            return PathSafety.itemExists(at: candidate) ? candidate : nil
         }
         guard let mountPoint = image.mountPoints.first else { return nil }
+        // Not `fileExists`, which follows links and so says that a link whose
+        // target is missing is not there. It is, and it is extracted as a link.
         let candidate = mountPoint.appendingPathComponent(normalized)
-        return FileManager.default.fileExists(atPath: candidate.path) ? candidate : nil
+        return PathSafety.itemExists(at: candidate) ? candidate : nil
     }
 
     /// Recursive copy that reports progress per file and honours the overwrite mode.
@@ -221,6 +227,7 @@ public struct DMGEngine: ArchiveEngine {
                 }
                 target = PathSafety.uniqueURL(for: target)
             }
+            let existed = PathSafety.itemExists(at: target)
             try journal.createDirectories(to: target)
             for child in topLevelChildren(of: source) {
                 try copy(from: child,
@@ -230,7 +237,9 @@ public struct DMGEngine: ArchiveEngine {
                          cancellation: cancellation,
                          journal: journal)
             }
-            Self.copyMetadata(from: source, to: target)
+            // A folder that was already there is merged into, and stays as its owner
+            // has it: its permissions, its tags and its dates are not the image's to set.
+            if !existed { Self.copyMetadata(from: source, to: target) }
             return
         }
 
@@ -475,6 +484,12 @@ public struct DMGEngine: ArchiveEngine {
         guard result.exitCode == 0 else {
             Diagnostics.log("attach failed for \(archive.lastPathComponent): exit \(result.exitCode) — \(result.standardError)")
             try? FileManager.default.removeItem(at: mountRoot)
+            // An image the user has already opened in the Finder cannot be attached
+            // a second time, and does not need to be: it is read where it is.
+            if let theirs = await Self.attachedElsewhere(archive) {
+                Diagnostics.log("reading \(archive.lastPathComponent) where it is already mounted: \(theirs.mountPoints.map(\.path))")
+                return DMGMountRegistry.shared.store(theirs, for: archive) ?? theirs
+            }
             throw Self.classify(result: result, password: password)
         }
 
@@ -501,6 +516,34 @@ public struct DMGEngine: ArchiveEngine {
         return image
     }
 
+    /// The image as someone else has it attached, if they have and it is mounted.
+    static func attachedElsewhere(_ archive: URL) async -> MountedImage? {
+        guard let result = try? await ProcessRunner.run(executable: EngineLocator.hdiutil,
+                                                        arguments: ["info", "-plist"]),
+              result.exitCode == 0 else { return nil }
+        return parseInfoOutput(result.standardOutput, for: archive)
+    }
+
+    /// Finds `archive` among the attached images that `hdiutil info -plist` lists.
+    static func parseInfoOutput(_ text: String, for archive: URL) -> MountedImage? {
+        guard let data = text.data(using: .utf8),
+              let root = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let images = (root as? [String: Any])?["images"] as? [[String: Any]] else { return nil }
+        let wanted = archive.resolvingSymlinksInPath().path
+        for image in images {
+            guard let path = image["image-path"] as? String,
+                  URL(fileURLWithPath: path).resolvingSymlinksInPath().path == wanted,
+                  let entities = image["system-entities"] as? [[String: Any]] else { continue }
+            let devices = entities.compactMap { $0["dev-entry"] as? String }
+            let mountPoints = entities.compactMap { $0["mount-point"] as? String }
+                .filter { !$0.isEmpty }.map { URL(fileURLWithPath: $0) }
+            guard let device = devices.min(by: { $0.count < $1.count }), !mountPoints.isEmpty else { continue }
+            return MountedImage(devEntry: device, mountPoints: mountPoints,
+                                mountRoot: mountPoints[0].deletingLastPathComponent(), isBorrowed: true)
+        }
+        return nil
+    }
+
     /// Reads hdiutil's attach plist and returns the whole-disk device plus every mount point.
     static func parseAttachOutput(_ text: String) -> (devEntry: String?, mountPoints: [URL]) {
         guard let data = text.data(using: .utf8),
@@ -524,6 +567,7 @@ public struct DMGEngine: ArchiveEngine {
     }
 
     static func detachSynchronously(_ image: MountedImage) {
+        guard !image.isBorrowed else { return }
         func run(_ arguments: [String]) -> Int32 {
             let process = Process()
             process.executableURL = EngineLocator.hdiutil
@@ -593,14 +637,14 @@ public struct DMGEngine: ArchiveEngine {
                                          includingPropertiesForKeys: keys,
                                          options: [.skipsPackageDescendants]) else { return [] }
 
-        let rootPath = mountPoint.standardizedFileURL.path
-        let prefixLength = rootPath.hasSuffix("/") ? rootPath.count : rootPath.count + 1
-
         var results: [ArchiveEntry] = []
         for case let url as URL in walker {
-            let fullPath = url.standardizedFileURL.path
-            guard fullPath.count > prefixLength else { continue }
-            let relative = String(fullPath.dropFirst(prefixLength))
+            // Where it is below the mount point, taken from how deep the walk is.
+            // Comparing standardised paths does not work: standardising follows a
+            // link, and one whose target is missing comes back as a different path.
+            let components = url.pathComponents
+            guard walker.level > 0, components.count >= walker.level else { continue }
+            let relative = components.suffix(walker.level).joined(separator: "/")
 
             // Volume housekeeping lives at the root and is never archive content.
             if let firstComponent = relative.split(separator: "/").first,

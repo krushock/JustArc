@@ -88,14 +88,22 @@ final class ServicesProvider: NSObject {
     // MARK: - Work
 
     private func compress(items: [URL], askForOptions: Bool) async {
-        guard let format = FormatRegistry.format(forKey: Preferences.defaultFormatKey)
+        guard var format = FormatRegistry.format(forKey: Preferences.defaultFormatKey)
             ?? FormatRegistry.format(forKey: "zip") else { return }
+        // GZip, BZip2 and XZ each hold one file. Asked to compress a folder or
+        // several things, the tar form of the same compression is what was meant.
+        let tarForms = ["gzip": "tgz", "bzip2": "tbz2", "xz": "txz"]
+        let isOneFile = items.count == 1
+            && (try? items[0].resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
+        if !isOneFile, let tar = tarForms[format.key].flatMap(FormatRegistry.format(forKey:)) {
+            format = tar
+        }
 
         let parent = items[0].deletingLastPathComponent()
         let stem = items.count == 1
             ? (items[0].lastPathComponent as NSString).deletingPathExtension
             : parent.lastPathComponent
-        let name = "\(stem.isEmpty ? "Archive" : stem).\(format.extensions[0])"
+        let name = "\(stem.isEmpty ? L("Archive") : stem).\(format.extensions[0])"
         let destination = PathSafety.uniqueURL(for: parent.appendingPathComponent(name))
 
         let options = CompressionOptions(formatKey: format.key,

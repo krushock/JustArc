@@ -34,8 +34,29 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     /// file, and the one that finishes last silently undoes the other.
     private var runningOperations = 0
     var isBusy: Bool { runningOperations > 0 }
+    /// Called before the task that does the work is started, not from inside it. A
+    /// task does not run at once, and in between a question that had been waiting
+    /// its turn could be asked and answered, and start a second rewrite of the
+    /// archive alongside this one.
     func beginOperation() { runningOperations += 1 }
-    func endOperation() { runningOperations = max(runningOperations - 1, 0) }
+
+    func endOperation() {
+        runningOperations = max(runningOperations - 1, 0)
+        // A reload asked for in the meantime was put off; this is the time for it.
+        if runningOperations == 0, reloadIsPending {
+            reloadIsPending = false
+            loadArchive()
+        }
+    }
+    /// A reload replaces the listing and sweeps away what was extracted for viewing,
+    /// which work in progress may be reading or writing. It waits for that work.
+    private var reloadIsPending = false
+
+    /// Set when the window has gone. A read of the archive still in flight has to
+    /// give back what it took, such as a disk image it attached, when it lands.
+    private var windowIsClosed = false
+    var onSettledAfterClose: (() -> Void)?
+    func windowDidClose() { windowIsClosed = true }
 
     /// True from the first successful read of the archive. A failure before that
     /// leaves nothing to show; a failure after it leaves the window as it was.
@@ -46,6 +67,26 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     private(set) var listingGeneration = 0
     /// A password to put in the keychain once it has been seen to work.
     var passwordToRemember: String?
+    /// The password that is known to open this archive, because something encrypted
+    /// has been decoded with it. Until there is one, nothing is written to an
+    /// encrypted archive: a file added with no password, or the wrong one, would go
+    /// in unprotected or under a password nobody knows.
+    private(set) var provenPassword: String?
+    func notePasswordProven() {
+        provenPassword = session.password
+        rememberPasswordIfProven()
+    }
+    /// Set when the password prompt is dismissed, so that work covering several
+    /// files asks once and not once per file.
+    var passwordPromptWasCancelled = false
+    var isLoadingArchive: Bool { isLoading }
+
+    /// The archive on disk is no longer what was read: after a save, for one.
+    func archiveDidChangeOnDisk() {
+        hasLoadedOnce = true
+        listingGeneration += 1
+        discardViewingCopies(before: listingGeneration)
+    }
     /// Set while the "edited outside JustArc" question is on screen.
     var isOfferingUpdate = false
     private var previewRequest = 0
@@ -57,13 +98,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
 
     /// Per-window scratch space for files opened or previewed out of the archive.
     /// Created eagerly so `deinit`, which is not main-actor isolated, can clean it up.
-    nonisolated let scratchDirectory: URL = {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("JustArc", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base
-    }()
+    nonisolated let scratchDirectory: URL = ScratchSpace.makeWindowFolder()
 
     var onTitleChange: ((String, URL?) -> Void)?
     /// Where we are inside the archive, for the window subtitle.
@@ -257,6 +292,10 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         }
         // A second read started while one is running would race it for the listing.
         guard !isLoading else { return }
+        guard !isBusy else {
+            reloadIsPending = true
+            return
+        }
         Task { await performLoad() }
     }
 
@@ -267,9 +306,16 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         defer {
             isLoading = false
             updateEmptyState()
+            if windowIsClosed {
+                // The window closed while this was being read; its own release ran
+                // before there was anything to release.
+                let session = self.session
+                DispatchQueue.global(qos: .utility).async { session.close() }
+                onSettledAfterClose?()
+                onSettledAfterClose = nil
+            }
         }
 
-        let previousPassword = session.password
         var attempt = 0
         var triedKeychain = false
         var usingKeychainPassword = false
@@ -281,7 +327,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
                 discardViewingCopies(before: listingGeneration)
                 // Reading a listing only proves a password when the names themselves
                 // are encrypted; otherwise it is proven by the first file that decodes.
-                if session.listing.info.hasEncryptedHeader { rememberPasswordIfProven() }
+                if session.listing.info.hasEncryptedHeader { notePasswordProven() }
                 RecentsRecorder.note(url)
                 onArchiveChange?(session.archiveURL)
                 reloadList()
@@ -301,11 +347,16 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
                 if usingKeychainPassword {
                     KeychainStore.remove(for: url)
                     usingKeychainPassword = false
+                    session.password = nil
                 }
+                // "That did not work" is the truth whenever a password was tried,
+                // whether typed at this prompt or set beforehand.
                 guard let response = PasswordPrompt.ask(archiveName: url.lastPathComponent,
                                                         window: view.window,
-                                                        retry: attempt > 0) else {
-                    session.password = previousPassword
+                                                        retry: attempt > 0 || session.password != nil) else {
+                    // Back to the last password known to be right, not to whichever
+                    // one was just refused.
+                    session.password = provenPassword
                     passwordToRemember = nil
                     if !hasLoadedOnce { onLoadFailed?() }
                     return
@@ -326,7 +377,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
 
     /// Saves the password the user asked to have remembered, now that it has worked.
     func rememberPasswordIfProven() {
-        guard let password = passwordToRemember, password == session.password,
+        guard let password = passwordToRemember, password == provenPassword,
               let url = session.archiveURL else { return }
         KeychainStore.save(password: password, for: url)
         passwordToRemember = nil
@@ -535,6 +586,9 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         case #selector(addFiles(_:)):
             return session.canModifyContents
         case #selector(deleteSelected(_:)):
+            // With the filter field being typed in, Command-Delete belongs to the
+            // text, and a disabled menu item lets the key through to it.
+            if view.window?.firstResponder is NSText { return false }
             return session.canModifyContents && !selectedNodesForCommand().isEmpty
         case #selector(renameSelected(_:)):
             // Files in a new archive still carry the names they have on disk; there is
@@ -651,10 +705,15 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
     /// Runs promise fulfilments one after another. The Finder asks for every dragged
     /// item at once, and for a solid archive each request decodes from the start.
     func enqueuePromise(_ work: @escaping @MainActor () async -> Void) {
+        // Counted as work in hand from the moment it is asked for: a reload would
+        // sweep away the folder being extracted into, and a closed window or a quit
+        // would leave the Finder with half a file.
+        beginOperation()
         let previous = promiseChain
         promiseChain = Task { @MainActor in
             await previous?.value
             await work()
+            self.endOperation()
         }
     }
 
@@ -668,10 +727,13 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         let request = previewRequest
         Task {
             var urls: [URL] = []
+            passwordPromptWasCancelled = false
             for node in nodes.prefix(20) {
                 if let url = await materialize(node: node, quiet: true) { urls.append(url) }
                 // The selection moved on while this was extracting.
                 guard request == previewRequest else { return }
+                // One refusal answers for the rest; asking again per file would not.
+                if passwordPromptWasCancelled { break }
             }
             guard !urls.isEmpty else { return }
             setPreviewItems(urls)
@@ -728,20 +790,24 @@ extension ArchiveBrowserViewController: NSFilePromiseProviderDelegate {
             self.enqueuePromise {
                 let produced = node.isDirectory
                     ? await self.materializeFolder(node: node)
-                    : await self.materialize(node: node, quiet: true, askingForPassword: false)
+                    : await self.materialize(node: node, quiet: true, mayAsk: false)
                 guard let source = produced else {
                     completionHandler(ArchiveError.ioFailure(L("%@ could not be extracted.", node.name)))
                     return
                 }
-                do {
-                    if FileManager.default.fileExists(atPath: url.path) {
-                        try FileManager.default.removeItem(at: url)
+                // Off the main thread: to another volume this can take a while.
+                let failure: Error? = await Task.detached(priority: .userInitiated) {
+                    do {
+                        if FileManager.default.fileExists(atPath: url.path) {
+                            try FileManager.default.removeItem(at: url)
+                        }
+                        try FileManager.default.copyItem(at: source, to: url)
+                        return nil
+                    } catch {
+                        return error
                     }
-                    try FileManager.default.copyItem(at: source, to: url)
-                    completionHandler(nil)
-                } catch {
-                    completionHandler(error)
-                }
+                }.value
+                completionHandler(failure)
             }
         }
     }

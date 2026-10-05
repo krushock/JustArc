@@ -122,11 +122,11 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
 
         for control in [openActionPopUp, destinationPopUp, conflictPopUp, folderConflictPopUp] {
             control.target = self
-            control.action = #selector(valueChanged)
+            control.action = #selector(valueChanged(_:))
         }
         for box in [smartFolderBox, revealBox, trashBox, quitBox] {
             box.target = self
-            box.action = #selector(valueChanged)
+            box.action = #selector(valueChanged(_:))
         }
 
         install(NSGridView(views: [
@@ -166,25 +166,42 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
             ($0.representedObject as? String) == Preferences.folderConflictMode.rawValue } ?? 0)
     }
 
-    @objc private func valueChanged() {
-        Preferences.extractDestination =
-            ExtractDestination.allCases[max(destinationPopUp.indexOfSelectedItem, 0)]
-        Preferences.smartFolder = smartFolderBox.state == .on
-        Preferences.revealInFinder = revealBox.state == .on
-        Preferences.moveArchiveToTrash = trashBox.state == .on
-        Preferences.quitAfterQuickExtract = quitBox.state == .on
-        if let raw = openActionPopUp.selectedItem?.representedObject as? String,
-           let action = ArchiveOpenAction(rawValue: raw) {
-            Preferences.archiveOpenAction = action
+    /// Writes the one setting whose control was used. Writing them all would put
+    /// back, from what this pane happens to be showing, a choice made elsewhere in
+    /// the meantime: "Always do this" in a conflict prompt, for one.
+    @objc private func valueChanged(_ sender: NSControl) {
+        switch sender {
+        case destinationPopUp:
+            Preferences.extractDestination =
+                ExtractDestination.allCases[max(destinationPopUp.indexOfSelectedItem, 0)]
+        case smartFolderBox:
+            Preferences.smartFolder = smartFolderBox.state == .on
+        case revealBox:
+            Preferences.revealInFinder = revealBox.state == .on
+        case trashBox:
+            Preferences.moveArchiveToTrash = trashBox.state == .on
+        case quitBox:
+            Preferences.quitAfterQuickExtract = quitBox.state == .on
+        case openActionPopUp:
+            if let raw = openActionPopUp.selectedItem?.representedObject as? String,
+               let action = ArchiveOpenAction(rawValue: raw) {
+                Preferences.archiveOpenAction = action
+            }
+        case conflictPopUp:
+            if let raw = conflictPopUp.selectedItem?.representedObject as? String,
+               let setting = Preferences.OverwriteModeSetting(rawValue: raw) {
+                Preferences.overwriteMode = setting
+            }
+        case folderConflictPopUp:
+            if let raw = folderConflictPopUp.selectedItem?.representedObject as? String,
+               let setting = Preferences.FolderConflictSetting(rawValue: raw) {
+                Preferences.folderConflictMode = setting
+            }
+        default:
+            break
         }
-        if let raw = conflictPopUp.selectedItem?.representedObject as? String,
-           let setting = Preferences.OverwriteModeSetting(rawValue: raw) {
-            Preferences.overwriteMode = setting
-        }
-        if let raw = folderConflictPopUp.selectedItem?.representedObject as? String,
-           let setting = Preferences.FolderConflictSetting(rawValue: raw) {
-            Preferences.folderConflictMode = setting
-        }
+        // And show what is now stored, including anything changed behind this pane.
+        loadValues()
     }
 }
 
@@ -317,22 +334,25 @@ final class RarSettingsViewController: SettingsPaneViewController {
     }
 
     @objc private func download() {
-        install(allowUnverified: false)
-    }
-
-    private func install(allowUnverified: Bool) {
         downloadButton.isEnabled = false
         chooseButton.isEnabled = false
         spinner.startAnimation(nil)
-        statusLabel.stringValue = L("Downloading from rarlab.com…")
-        statusLabel.textColor = .secondaryLabelColor
-
         Task {
-            defer {
-                spinner.stopAnimation(nil)
-                downloadButton.isEnabled = true
-                chooseButton.isEnabled = true
-            }
+            await install()
+            spinner.stopAnimation(nil)
+            downloadButton.isEnabled = true
+            chooseButton.isEnabled = true
+        }
+    }
+
+    /// Downloads and installs, going round again without the check when the user
+    /// says to install a release nothing can vouch for. One function from start to
+    /// finish, so the spinner and the disabled buttons cover all of it.
+    private func install() async {
+        var allowUnverified = false
+        while true {
+            statusLabel.stringValue = L("Downloading from rarlab.com…")
+            statusLabel.textColor = .secondaryLabelColor
             do {
                 let installation = try await RarToolInstaller.install(allowUnverified: allowUnverified) { fraction in
                     Task { @MainActor in
@@ -343,7 +363,8 @@ final class RarSettingsViewController: SettingsPaneViewController {
                 }
                 refresh()
                 showLicenceNotice(version: installation.version)
-            } catch RarToolInstaller.InstallerError.unverified(let file) {
+                return
+            } catch RarToolInstaller.InstallerError.unverified(let file) where !allowUnverified {
                 refresh()
                 // A release newer than any record of what it should contain. The
                 // choice is the user's, and the safe answer is the default.
@@ -353,9 +374,14 @@ final class RarSettingsViewController: SettingsPaneViewController {
                 alert.informativeText = L("%@ is newer than the releases JustArc can verify, and RARLAB publishes no checksums of its own. Installing it means trusting the connection to rarlab.com alone.", file)
                 alert.addButton(withTitle: L("Cancel"))
                 alert.addButton(withTitle: L("Install Anyway"))
-                let answer = view.window != nil
-                    ? await alert.beginSheetModal(for: view.window!) : alert.runModal()
-                if answer == .alertSecondButtonReturn { install(allowUnverified: true) }
+                let answer: NSApplication.ModalResponse
+                if let window = view.window {
+                    answer = await alert.beginSheetModal(for: window)
+                } else {
+                    answer = alert.runModal()
+                }
+                guard answer == .alertSecondButtonReturn else { return }
+                allowUnverified = true
             } catch {
                 refresh()
                 let alert = NSAlert()
@@ -364,6 +390,7 @@ final class RarSettingsViewController: SettingsPaneViewController {
                 alert.informativeText = error.localizedDescription
                 alert.addButton(withTitle: L("OK"))
                 if let window = view.window { await alert.beginSheetModal(for: window) }
+                return
             }
         }
     }

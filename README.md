@@ -263,5 +263,15 @@ Each of these has a test built from an archive made to break it, in
   has decoded, later failures are reported as damage.
 - The reason the system gives for a failed write ("No space left on device") is in
   English whatever the app's language; the sentence around it is translated.
+- Two names that differ only in capitalisation cannot sit in one folder on a Mac.
+  Save As still carries both across, by passing them through separate folders, for
+  every format except a disk image and a split RAR, which are built from one folder
+  and so are refused with an explanation.
+- RARLAB's `rar` reads `?` and `*` in a name as wildcards and has no way to say
+  otherwise. Adding and deleting such a file work around it and check the result;
+  renaming one is refused when it would have renamed its neighbours too.
+- An item nested more than 512 folders deep is not listed. No path that long can
+  exist on macOS, so it could never be extracted, and archives built to be that deep
+  are built to exhaust whatever opens them.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.

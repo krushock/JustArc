@@ -188,6 +188,22 @@ public extension ArchiveEngine {
     func release(archive: URL) {}
 }
 
+/// An engine that can bring out an archive's contents exactly as they are stored,
+/// for writing straight back into another archive.
+///
+/// That means symbolic links wherever they lead, which is the wrong thing to do
+/// into a folder of the user's and the right thing in a private one; the `._` and
+/// `__MACOSX` bookkeeping that is otherwise hidden; and names that differ only in
+/// capitalisation, which this Mac's disk cannot hold side by side.
+protocol VerbatimExtractor {
+    /// Extracts everything except `excluding` into numbered folders under `scratch`:
+    /// as many as it takes for no two names to land on one another. Returns them in
+    /// the order their contents are to be written.
+    func extractVerbatim(archive: URL, excluding: Set<String>, under scratch: URL,
+                         password: String?, cancellation: CancellationToken?,
+                         progress: ProgressHandler?) async throws -> [URL]
+}
+
 /// Picks the backend for a format. Everything that is not a disk image goes to 7-Zip.
 public enum EngineFactory {
     public static func engine(for archive: URL) -> ArchiveEngine {

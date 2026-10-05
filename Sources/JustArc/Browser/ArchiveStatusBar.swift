@@ -70,7 +70,7 @@ final class ArchiveStatusBar: NSVisualEffectView {
             selectionLabel.stringValue = ""
         } else {
             let files = selection.filter { !$0.isDirectory }
-            let bytes = selection.reduce(0) { $0 + $1.size }
+            let bytes = selection.reduce(UInt64(0)) { $0.addingSaturating($1.size) }
             selectionLabel.stringValue = files.count == 1
                 ? L("Selected 1 file, %@", Formatting.bytes(bytes))
                 : L("Selected %@ files, %@", Formatting.count(files.count), Formatting.bytes(bytes))

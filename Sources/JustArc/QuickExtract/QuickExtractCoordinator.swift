@@ -18,11 +18,13 @@ final class QuickExtractCoordinator {
     func enqueue(_ archives: [URL]) {
         queue.append(contentsOf: archives)
         guard !isRunning else { return }
+        // Claimed now, not when the task gets to run: a second call arriving in
+        // between would otherwise start a second run over the same queue.
+        isRunning = true
         Task { await drain() }
     }
 
     private func drain() async {
-        isRunning = true
         while !queue.isEmpty {
             let archive = queue.removeFirst()
             await process(archive)
@@ -61,6 +63,8 @@ final class QuickExtractCoordinator {
                 listing = try await engine.list(archive: archive, password: password, encodingCodePage: nil)
                 break
             } catch let error as ArchiveError where error.isPasswordProblem {
+                // A remembered password that no longer opens this archive is forgotten.
+                if attempt == 0, password != nil { KeychainStore.remove(for: archive) }
                 guard let response = PasswordPrompt.ask(archiveName: archive.lastPathComponent,
                                                         window: nil,
                                                         retry: attempt > 0) else { return }
@@ -133,7 +137,8 @@ final class QuickExtractCoordinator {
             if let passwordToRemember, passwordToRemember == password {
                 KeychainStore.save(password: passwordToRemember, for: archive)
             }
-            finishUp(archive: archive, plan: plan, outcome: outcome)
+            finishUp(archive: archive, plan: plan, outcome: outcome,
+                     skippedFiles: resolution.file == .skip)
         } catch let error as ArchiveError where error == .cancelled {
             panel.finish()
             if plan.createdWrapperFolder {
@@ -141,6 +146,9 @@ final class QuickExtractCoordinator {
             }
         } catch {
             panel.finish()
+            // The folder made for the contents is not left behind empty. If something
+            // was extracted before the failure it stays, and so does the folder.
+            if plan.createdWrapperFolder { rmdir(plan.destination.path) }
             present(error: error, archive: archive)
         }
     }
@@ -191,7 +199,8 @@ final class QuickExtractCoordinator {
         }
     }
 
-    private func finishUp(archive: URL, plan: ExtractionPlan, outcome: ExtractionOutcome) {
+    private func finishUp(archive: URL, plan: ExtractionPlan, outcome: ExtractionOutcome,
+                          skippedFiles: Bool) {
         if outcome.extractedNothing, !outcome.skippedFolders.isEmpty {
             // Everything in the archive was skipped, so say so rather than silently
             // opening a folder that did not change.
@@ -205,7 +214,7 @@ final class QuickExtractCoordinator {
 
         // Only once everything in it has been extracted: with some folders skipped,
         // the archive still holds the only copy of what was in them.
-        if Preferences.moveArchiveToTrash, outcome.skippedFolders.isEmpty {
+        if Preferences.moveArchiveToTrash, outcome.skippedFolders.isEmpty, !skippedFiles {
             try? FileManager.default.trashItem(at: archive, resultingItemURL: nil)
         }
         if Preferences.revealInFinder {

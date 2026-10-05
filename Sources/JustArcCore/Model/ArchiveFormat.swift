@@ -46,7 +46,7 @@ public struct ArchiveFormat: Sendable, Hashable, Identifiable {
 
 public enum FormatRegistry {
     public static let all: [ArchiveFormat] = [
-        ArchiveFormat(key: "zip", displayName: "ZIP", extensions: ["zip", "jar", "ipa", "apk", "epub", "xpi", "war", "whl"],
+        ArchiveFormat(key: "zip", displayName: "ZIP", extensions: ["zip", "jar", "ipa", "apk", "epub", "xpi", "war", "whl", "cbz"],
                       canWrite: true, canEditInPlace: true, supportsPassword: true,
                       supportsSplitVolumes: true),
         ArchiveFormat(key: "7z", displayName: "7-Zip", extensions: ["7z"],
@@ -85,6 +85,9 @@ public enum FormatRegistry {
         ArchiveFormat(key: "msi", displayName: L("Windows Installer"), extensions: ["msi", "msp"], supportsCompressionLevel: false),
         ArchiveFormat(key: "vhd", displayName: L("Virtual Disk"), extensions: ["vhd", "vhdx", "vdi", "vmdk", "qcow2"], supportsCompressionLevel: false),
         ArchiveFormat(key: "squashfs", displayName: L("SquashFS"), extensions: ["squashfs", "sfs"], supportsCompressionLevel: false),
+        // The first volume of an archive cut into pieces: "name.7z.001". What is
+        // inside is whatever was cut, which 7-Zip works out when it joins them.
+        ArchiveFormat(key: "split", displayName: L("Split Archive"), extensions: ["001"], supportsCompressionLevel: false),
     ]
 
     /// Formats offered in the Save As menu, in presentation order.
@@ -111,6 +114,21 @@ public enum FormatRegistry {
 
     public static func isArchive(_ url: URL) -> Bool {
         format(for: url) != nil
+    }
+
+    /// The name to save under: what was typed, with the extension of the format that
+    /// was chosen. An archive extension already on the name is replaced; anything
+    /// else that merely looks like one is part of the name, so "Backup 2024.10.05"
+    /// stays whole.
+    public static func saveName(typed: String, format: ArchiveFormat) -> String {
+        var stem = typed
+        while let current = self.format(for: URL(fileURLWithPath: "/" + stem)) {
+            if stem == typed, current.key == format.key { return typed }
+            let stripped = baseName(for: URL(fileURLWithPath: "/" + stem))
+            if stripped == stem || stripped.isEmpty { break }
+            stem = stripped
+        }
+        return "\(stem.isEmpty ? L("Archive") : stem).\(format.extensions[0])"
     }
 
     /// Strips every known archive suffix so "site.tar.gz" becomes "site".

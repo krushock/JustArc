@@ -88,7 +88,17 @@ final class ExtractionRunnerTests: XCTestCase {
 
     func testReplaceRemovesTheExistingFolderEntirely() async throws {
         try placeExistingFolder()
+        // Not the real Trash, which is whoever runs the tests' own.
+        var trashed: [String] = []
+        let realTrash = ExtractionRunner.trash
+        ExtractionRunner.trash = { url in
+            trashed.append(url.lastPathComponent)
+            try FileManager.default.removeItem(at: url)
+        }
+        defer { ExtractionRunner.trash = realTrash }
         let outcome = try await ExtractionRunner.run(job(.replace), engine: engine)
+        XCTAssertEqual(trashed, ["payload"], "the folder goes to the Trash under its own name")
+        XCTAssertFalse(contents("").contains { $0.hasPrefix(".justarc-replaced") }, "nothing is left beside it")
 
         let names = contents("payload")
         XCTAssertFalse(names.contains("of-my-own.txt"), "replace means the old folder is gone")

@@ -22,6 +22,9 @@ public enum VolumeSize {
         Preset(title: L("4480 MB (DVD)"), spec: "4480m"),
     ]
 
+    /// The smallest volume that can be asked for.
+    public static let minimumBytes = 64 * 1024
+
     /// Accepts "100m", "100 MB", "1.5 GB", "700" and so on. Returns nil when the text
     /// means "do not split" and throws nothing: unparseable input is simply nil.
     public static func normalize(_ raw: String) -> String? {
@@ -49,14 +52,23 @@ public enum VolumeSize {
         // not fit the integer the spec is written with.
         guard let value = Double(digits), value > 0, value < 1e15 else { return nil }
 
+        // A bare number is megabytes, the unit every preset is in. Read as bytes,
+        // "700" would cut the archive into pieces of 700 bytes: a million files for
+        // what was meant to fit on a CD.
         let suffix: String
         switch unit {
-        case "", "b": suffix = "b"
+        case "": suffix = "m"
+        case "b": suffix = "b"
         case "k", "kb", "kib": suffix = "k"
         case "m", "mb", "mib": suffix = "m"
         case "g", "gb", "gib": suffix = "g"
         default: return nil
         }
+
+        // Nor is a volume smaller than this ever wanted; it is a slip of the hand
+        // that would fill a folder with thousands of files.
+        let scale: [String: Double] = ["b": 1, "k": 1024, "m": 1_048_576, "g": 1_073_741_824]
+        guard value * (scale[suffix] ?? 1) >= Double(minimumBytes) else { return nil }
 
         // Fractional sizes are scaled down a unit so the spec stays an integer.
         if value != value.rounded() {

@@ -8,6 +8,7 @@ import XCTest
 final class SettingsTests: XCTestCase {
     override func setUp() async throws {
         _ = NSApplication.shared
+        ModalWatchdog.arm()
     }
 
     func testFileTypeRowsAreDistinctTypes() {

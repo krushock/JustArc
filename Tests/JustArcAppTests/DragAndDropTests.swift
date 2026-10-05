@@ -13,6 +13,7 @@ final class DragAndDropTests: XCTestCase {
 
     override func setUp() async throws {
         _ = NSApplication.shared
+        ModalWatchdog.arm()
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("justarc-app-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root.appendingPathComponent("payload/docs"),

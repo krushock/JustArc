@@ -5,15 +5,19 @@ import Foundation
 ///
 /// A compressed stream wrapping a tar (`.tar.gz`, `.tar.xz`, …) is unwrapped into a
 /// temporary tar once and read from there; see `NestedTarCache`.
-public struct SevenZipEngine: ArchiveEngine {
+public struct SevenZipEngine: ArchiveEngine, VerbatimExtractor {
     public init() {}
 
     // MARK: - Listing
 
     public func list(archive: URL, password: String?, encodingCodePage: Int? = nil) async throws -> ArchiveListing {
-        CodePageMemory.remember(encodingCodePage, for: archive)
+        // No encoding given means whichever was last chosen for this archive, not
+        // "forget the choice": Quick Extract and the Finder's services list archives
+        // too, and must not change how a window that is open on one reads its names.
+        if let encodingCodePage { CodePageMemory.remember(encodingCodePage, for: archive) }
+        let codePage = encodingCodePage ?? CodePageMemory.codePage(for: archive)
         return try await Self.blocking {
-            let readable = try Readable.open(archive, password: password, codePage: encodingCodePage,
+            let readable = try Readable.open(archive, password: password, codePage: codePage,
                                              unwrapProgress: .silent)
             var info = readable.bridge.info
             if let outer = readable.outer {
@@ -23,8 +27,14 @@ public struct SevenZipEngine: ArchiveEngine {
             // macOS's own bookkeeping is left out; see `MacMetadata`.
             // An entry named "." or "./", which tar writes for the folder it was run
             // in, normalises to no name at all and stands for nothing extractable.
-            let entries = readable.bridge.entries().filter {
-                !$0.path.isEmpty && !MacMetadata.isMetadata(path: $0.path)
+            // Nor is a path nested deeper than any path on this system can be.
+            let all = readable.bridge.entries()
+            let entries = all.filter {
+                !$0.path.isEmpty && !MacMetadata.isMetadata(path: $0.path) && !ArchivePath.isTooDeep($0.path)
+            }
+            let tooDeep = all.lazy.filter { ArchivePath.isTooDeep($0.path) }.count
+            if tooDeep > 0 {
+                Diagnostics.log("\(archive.lastPathComponent): \(tooDeep) item(s) nested more than \(ArchivePath.maximumDepth) folders deep are not listed")
             }
             return ArchiveListing(info: info, entries: entries)
         }
@@ -40,6 +50,107 @@ public struct SevenZipEngine: ArchiveEngine {
                         flattenPaths: Bool = false,
                         cancellation: CancellationToken? = nil,
                         progress: ProgressHandler? = nil) async throws {
+        try await extract(archive: archive, entries: entries, to: destination, password: password,
+                          overwrite: overwrite, flattenPaths: flattenPaths, keepLinksAsStored: false,
+                          cancellation: cancellation, progress: progress)
+    }
+
+    func extractVerbatim(archive: URL, excluding: Set<String>, under scratch: URL,
+                         password: String?, cancellation: CancellationToken?,
+                         progress: ProgressHandler?) async throws -> [URL] {
+        let codePage = CodePageMemory.codePage(for: archive)
+        let caseSensitive = (try? scratch.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+            .volumeSupportsCaseSensitiveNames) ?? false
+
+        return try await Self.blocking {
+            let whole = BridgeProgress(handler: progress, cancellation: cancellation)
+            let readable = try Readable.open(archive, password: password, codePage: codePage,
+                                             unwrapProgress: whole.slice(offset: 0, span: 0.5))
+            let kept = readable.bridge.indices().filter { !Self.isExcluded($0.path, by: excluding) }
+            if let unsafe = kept.first(where: { !$0.path.isEmpty && !PathSafety.isSafe(entryPath: $0.path) }) {
+                throw ArchiveError.unsafeEntry(unsafe.path)
+            }
+            let layers = try Self.layers(of: kept, caseSensitive: caseSensitive)
+            let rest = readable.didUnwrap ? whole.slice(offset: 0.5, span: 0.5) : whole
+
+            var folders: [URL] = []
+            for (number, layer) in layers.enumerated() where !layer.isEmpty {
+                let folder = scratch.appendingPathComponent("contents-\(number)")
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try readable.bridge.extract(indices: layer, destination: folder, password: password,
+                                            overwrite: .overwrite, flatten: false, testOnly: false,
+                                            keepLinksAsStored: true,
+                                            progress: layers.count == 1 ? rest : whole.slice(offset: 0, span: 0))
+                folders.append(folder)
+            }
+            return folders
+        }
+    }
+
+    /// Whether an item is one of `excluded`, inside one of them, or the Mac
+    /// bookkeeping that describes one.
+    static func isExcluded(_ path: String, by excluded: Set<String>) -> Bool {
+        guard !excluded.isEmpty else { return false }
+        func isCovered(_ path: String) -> Bool {
+            if excluded.contains(path) { return true }
+            var parent = Substring(path)
+            while let slash = parent.lastIndex(of: "/") {
+                parent = parent[..<slash]
+                if excluded.contains(String(parent)) { return true }
+            }
+            return false
+        }
+        if isCovered(path) { return true }
+        guard MacMetadata.isMetadata(path: path), let described = MacMetadata.itemDescribed(by: path) else {
+            return false
+        }
+        return isCovered(described)
+    }
+
+    /// Sorts items into groups that a disk can hold: within one, no two names, of
+    /// files or of the folders above them, differ only in capitalisation or in how
+    /// an accent is composed.
+    static func layers(of items: [(index: UInt32, path: String)], caseSensitive: Bool) throws -> [[UInt32]] {
+        guard !caseSensitive else { return [items.map(\.index)] }
+        var layers: [[UInt32]] = [[]]
+        var spellings: [[String: String]] = [[:]]
+        for item in items {
+            // Every folder on the way down, and the item itself.
+            var prefixes: [(folded: String, exact: String)] = []
+            var end = item.path.startIndex
+            while end < item.path.endIndex {
+                end = item.path[end...].dropFirst().firstIndex(of: "/") ?? item.path.endIndex
+                let exact = String(item.path[..<end])
+                prefixes.append((exact.precomposedStringWithCanonicalMapping.lowercased(), exact))
+            }
+            var home = layers.indices.first { layer in
+                prefixes.allSatisfy { (spellings[layer][$0.folded] ?? $0.exact) == $0.exact }
+            }
+            if home == nil {
+                guard layers.count < 32 else {
+                    throw ArchiveError.ioFailure(
+                        L("“%@” differs from too many other names only in capitalisation for the archive to be rewritten on this Mac's disk.", item.path))
+                }
+                layers.append([])
+                spellings.append([:])
+                home = layers.count - 1
+            }
+            guard let home else { continue }
+            layers[home].append(item.index)
+            for prefix in prefixes { spellings[home][prefix.folded] = prefix.exact }
+        }
+        return layers
+    }
+
+    private func extract(archive: URL,
+                         entries: [ArchiveEntry]?,
+                         to destination: URL,
+                         password: String?,
+                         overwrite: OverwriteMode,
+                         flattenPaths: Bool,
+                         keepLinksAsStored: Bool,
+                         cancellation: CancellationToken?,
+                         progress: ProgressHandler?) async throws {
         if let entries, let unsafePath = PathSafety.firstUnsafePath(in: entries) {
             throw ArchiveError.unsafeEntry(unsafePath)
         }
@@ -61,6 +172,7 @@ public struct SevenZipEngine: ArchiveEngine {
                 overwrite: overwrite,
                 flatten: flattenPaths,
                 testOnly: false,
+                keepLinksAsStored: keepLinksAsStored,
                 progress: readable.didUnwrap ? whole.slice(offset: 0.5, span: 0.5) : whole)
             if summary.linksRefused > 0 {
                 Diagnostics.log("Skipped \(summary.linksRefused) link(s) pointing outside \(destination.path)")
@@ -195,9 +307,20 @@ public struct SevenZipEngine: ArchiveEngine {
             // What is added replaces what has the same path, and a file replaces a
             // whole folder of that name, so no path ends up in the archive twice.
             let replaced = Set(added.map(\.archivePath))
-            let replacedByFiles = added.filter { !Self.isDirectory($0.diskURL) }.map { $0.archivePath + "/" }
+            let replacedByFiles = Set(added.lazy.filter { !Self.isDirectory($0.diskURL) }.map(\.archivePath))
+            // Looked up by walking each existing path upwards, not by comparing every
+            // existing item with every added one, which for a large archive and a
+            // large folder is tens of millions of comparisons.
+            func isUnderReplacedFile(_ path: String) -> Bool {
+                var parent = Substring(path)
+                while let slash = parent.lastIndex(of: "/") {
+                    parent = parent[..<slash]
+                    if replacedByFiles.contains(String(parent)) { return true }
+                }
+                return false
+            }
             let removed = existing.filter { item in
-                replaced.contains(item.path) || replacedByFiles.contains { item.path.hasPrefix($0) }
+                replaced.contains(item.path) || (!replacedByFiles.isEmpty && isUnderReplacedFile(item.path))
             }.map(\.index)
             return Edit(removed: removed, renames: [], added: added)
         }
@@ -216,6 +339,14 @@ public struct SevenZipEngine: ArchiveEngine {
         let from = entry.path
         let to = ArchivePath.normalize(newPath)
         guard from != to else { return }
+        // Names the list leaves out as the Mac's bookkeeping. Something renamed to
+        // one would still be in the archive and could not be seen, extracted or
+        // renamed back.
+        guard !MacMetadata.isMetadata(path: to) else {
+            throw ArchiveError.ioFailure(
+                L("“%@” is a name macOS keeps for its own bookkeeping, and files with it are not shown. Choose another name.",
+                  (to as NSString).lastPathComponent))
+        }
 
         try await rewrite(archive, password: password, options: nil) { bridge in
             let items = bridge.indices()
@@ -426,7 +557,7 @@ public struct SevenZipEngine: ArchiveEngine {
         return kind == S_IFREG || kind == S_IFDIR || kind == S_IFLNK
     }
 
-    private static func isMacMetadata(_ name: String) -> Bool {
+    static func isMacMetadata(_ name: String) -> Bool {
         name == ".DS_Store" || name == "__MACOSX" || name.hasPrefix("._")
     }
 
@@ -557,13 +688,18 @@ final class GrowthLimiter: @unchecked Sendable {
     private var lastCheck: TimeInterval = 0
     private var hasTripped = false
 
-    init(folder: URL, ceiling: UInt64 = PathSafety.defaultMaxExpandedBytes) {
+    /// - Parameter ceiling: a limit of its own, for tests. Normally the only limit is
+    ///   the room on the disk: a compressed tar of a hundred gigabytes is a backup,
+    ///   not a bomb, and there is no size at which one becomes the other.
+    init(folder: URL, ceiling: UInt64 = .max) {
         self.folder = folder
-        // Leave the disk a margin: a full startup volume makes everything else fail.
         let free = (try? folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             .volumeAvailableCapacityForImportantUsage).map { UInt64(max($0, 0)) } ?? ceiling
+        // Leave the disk a margin: a full startup volume makes everything else fail.
+        // On a disk with less than that to spare, half of what there is, so that a
+        // small archive can still be opened.
         let margin: UInt64 = 1 << 30
-        limit = min(ceiling, free > margin ? free - margin : 0)
+        limit = min(ceiling, free > 2 * margin ? free - margin : free / 2)
     }
 
     var tripped: Bool {

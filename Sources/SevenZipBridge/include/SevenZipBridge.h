@@ -138,6 +138,11 @@ typedef struct SZExtractOptions {
     bool flatten;
     /// Decode and verify everything without writing anything.
     bool testOnly;
+    /// Create every symbolic link as the archive has it, wherever it points. Only
+    /// for a private folder whose contents go straight back into an archive: a link
+    /// that leads outside is otherwise refused, since whatever follows it would be
+    /// reading or writing somewhere the user never chose.
+    bool keepLinksAsStored;
 } SZExtractOptions;
 
 typedef struct SZExtractSummary {

@@ -127,6 +127,7 @@ public:
     SZOverwrite overwrite = SZOverwriteRenameNew;
     bool flatten = false;
     bool testOnly = false;
+    bool keepLinksAsStored = false;
     UString password;
     bool hasPassword = false;
 
@@ -737,8 +738,8 @@ void ExtractCallback::CreateSymbolicLinks() {
     for (const PendingLink &pending : symbolicLinks) {
         itemPath = pending.itemPath;
         const std::string &target = pending.target;
-        if (target.empty() || target[0] == '/' || target.find('\0') != std::string::npos
-            || target.size() >= PATH_MAX) {
+        if (target.empty() || (target[0] == '/' && !keepLinksAsStored)
+            || target.find('\0') != std::string::npos || target.size() >= PATH_MAX) {
             summary.linksRefused++;
             continue;
         }
@@ -755,7 +756,7 @@ void ExtractCallback::CreateSymbolicLinks() {
     symbolicLinks.clear();
 
     for (const std::string &link : createdLinks) {
-        if (LinkLeadsInside(link)) continue;
+        if (keepLinksAsStored || LinkLeadsInside(link)) continue;
         // Taken away again, and whatever it displaced is put back.
         UndoStepsAt(link);
         if (IsSymlinkPath(link)) unlink(link.c_str());
@@ -928,6 +929,7 @@ extern "C" SZStatus sz_extract(SZArchive *archive, const uint32_t *indices, uint
     callbackSpec->archive = archive;
     callbackSpec->testOnly = options->testOnly;
     callbackSpec->flatten = options->flatten;
+    callbackSpec->keepLinksAsStored = options->keepLinksAsStored;
     callbackSpec->overwrite = options->overwrite;
     callbackSpec->progress.callback = progress;
     callbackSpec->progress.context = context;

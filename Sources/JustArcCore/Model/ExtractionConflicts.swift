@@ -51,6 +51,10 @@ public enum ExtractionConflicts {
             let normalized = ArchivePath.normalize(root)
             guard !normalized.isEmpty, PathSafety.isSafe(entryPath: normalized) else { continue }
             guard isDirectory(destination.appendingPathComponent(normalized)) else { continue }
+            // Merge, Replace and Keep Both are questions about two folders. A file
+            // in the archive that meets a folder of its name is not one of those:
+            // answering Replace would throw the folder away to make room for a file.
+            guard holdsFolder(normalized, in: entries) else { continue }
             if !folders.contains(normalized) { folders.append(normalized) }
         }
 
@@ -72,6 +76,13 @@ public enum ExtractionConflicts {
         }
 
         return Report(folders: folders, files: sample, fileCount: fileCount)
+    }
+
+    /// Whether `path` is a folder in the archive: listed as one, or implied by
+    /// something inside it.
+    static func holdsFolder(_ path: String, in entries: [ArchiveEntry]) -> Bool {
+        let prefix = path + "/"
+        return entries.contains { ($0.path == path && $0.isDirectory) || $0.path.hasPrefix(prefix) }
     }
 
     /// The file collisions that remain once a folder decision has been made.

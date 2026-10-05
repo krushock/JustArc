@@ -58,7 +58,7 @@ public final class EntryTree {
     }
 
     private func insert(_ entry: ArchiveEntry) {
-        guard !entry.path.isEmpty else { return }
+        guard !entry.path.isEmpty, !ArchivePath.isTooDeep(entry.path) else { return }
         let components = entry.path.split(separator: "/").map(String.init)
         var currentPath = ""
         var parent = root

@@ -21,14 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: - Lifecycle
 
-    /// Where every window keeps the files it has opened or previewed out of an archive.
-    private static let scratchRoot = FileManager.default.temporaryDirectory
-        .appendingPathComponent("JustArc", isDirectory: true)
-
     func applicationWillFinishLaunching(_ notification: Notification) {
         Preferences.registerDefaults()
-        // Anything here was left by a run that did not get to tidy up.
-        try? FileManager.default.removeItem(at: Self.scratchRoot)
+        // Left by a run that did not get to tidy up.
+        ScratchSpace.removeAbandoned()
         Diagnostics.log("launch: ui language \(Bundle.main.preferredLocalizations.first ?? "?"), "
                         + "\"Extract To\" reads as \"\(L("Extract To"))\"")
         recentMenu.open = { [weak self] url in self?.openInBrowser(url) }
@@ -68,8 +64,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         didReceiveOpenRequest = true
-        let archives = urls.filter { FormatRegistry.isArchive($0) }
-        let others = urls.filter { !FormatRegistry.isArchive($0) }
+        // A folder is something to put in an archive, whatever it is called:
+        // "Photos.zip" can be a folder's name.
+        func isArchive(_ url: URL) -> Bool {
+            FormatRegistry.isArchive(url)
+                && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
+        }
+        let archives = urls.filter(isArchive)
+        let others = urls.filter { !isArchive($0) }
 
         // Other files dropped on the app become the contents of an archive, going into
         // the empty window when there is one rather than opening a second.
@@ -150,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Leaving a disk image attached after quitting would strand it in Finder.
         EngineFactory.releaseAll()
         // Files opened out of archives, some of them decrypted, do not outlive the app.
-        try? FileManager.default.removeItem(at: Self.scratchRoot)
+        ScratchSpace.removeOwn()
     }
 
     /// Quitting asks first when it would lose something: an archive that was never
@@ -159,13 +161,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let working = quickExtract.hasActiveJobs || backgroundJobs > 0
             || browserControllers.contains(where: \.isBusy)
         let unsaved = browserControllers.filter { $0.session.hasUnsavedChanges }
-        guard working || !unsaved.isEmpty else { return .terminateNow }
+        // Files opened out of an archive and edited since, whose edits live only in
+        // the scratch folder that quitting removes.
+        let edited = browserControllers.filter(\.hasEditsNotWrittenBack)
+        guard working || !unsaved.isEmpty || !edited.isEmpty else { return .terminateNow }
 
         let alert = NSAlert()
         alert.alertStyle = .warning
         if working {
             alert.messageText = L("JustArc is still working. Quit anyway?")
             alert.informativeText = L("The archive or the files being written now will be left incomplete.")
+        } else if unsaved.isEmpty {
+            alert.messageText = L("Files you opened from an archive were edited and not written back. Quit anyway?")
+            alert.informativeText = L("Switch to the archive's window to be asked about updating it. Quitting discards the edits.")
         } else if unsaved.count == 1 {
             alert.messageText = L("%@ has not been saved. Quit anyway?", unsaved[0].session.displayName)
             alert.informativeText = L("The files you added have not been written to an archive yet.")
@@ -206,6 +214,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         backgroundJobs = max(backgroundJobs - 1, 0)
         terminateIfNothingLeftToShow()
     }
+
+    /// Keeps the app from quitting under something that outlives its window.
+    func holdProcess() { backgroundJobs += 1 }
+    func releaseProcess() { endBackgroundJob() }
 
     private func presentMissingEngineAndQuit() {
         let alert = NSAlert()

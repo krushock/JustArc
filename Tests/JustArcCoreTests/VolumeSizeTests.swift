@@ -12,7 +12,9 @@ final class VolumeSizeTests: XCTestCase {
         XCTAssertEqual(VolumeSize.normalize("100 MB"), "100m")
         XCTAssertEqual(VolumeSize.normalize("1g"), "1g")
         XCTAssertEqual(VolumeSize.normalize("1 GiB"), "1g")
-        XCTAssertEqual(VolumeSize.normalize("4480"), "4480b")
+        XCTAssertEqual(VolumeSize.normalize("4480"), "4480m", "a bare number is megabytes, as the presets are")
+        XCTAssertNil(VolumeSize.normalize("700 b"), "too small to be meant")
+        XCTAssertNil(VolumeSize.normalize("10k"))
         XCTAssertEqual(VolumeSize.normalize("64k"), "64k")
     }
 
@@ -52,7 +54,9 @@ final class RarEngineArgumentTests: XCTestCase {
         XCTAssertTrue(arguments.contains("-m5"))
         XCTAssertTrue(arguments.contains("-psesame"))
         XCTAssertTrue(arguments.contains("-v100m"))
-        XCTAssertTrue(arguments.contains("-x*.DS_Store"))
+        XCTAssertTrue(arguments.contains("-ol"), "links are stored as links")
+        XCTAssertTrue(arguments.contains("-ep1"), "full paths are stored as names")
+        XCTAssertFalse(arguments.contains { $0.hasPrefix("-x*") }, "what is left out is named, not matched by pattern")
         // Names travel in a list file, after "--", so none can be read as a switch.
         XCTAssertEqual(arguments.last, "@/tmp/names.lst")
         XCTAssertFalse(arguments.contains("-r"))
