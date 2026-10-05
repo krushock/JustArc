@@ -99,35 +99,32 @@ public enum ExtractionRunner {
     /// Replaces the folders that are in the way, giving them up only once there is
     /// something to replace them with.
     ///
-    /// Each is first moved aside, next to where it was. If the extraction then
-    /// writes nothing in its place, because it was cancelled, or the password was
-    /// wrong, or the archive could not be read, it is moved back. Only when the new
-    /// folder is there does the old one go to the Trash.
+    /// Each is first renamed where it is, to "name (replaced)". If the extraction
+    /// then writes nothing in its place, because it was cancelled, or the password
+    /// was wrong, or the archive could not be read, it gets its name back. Only when
+    /// the new folder is there does the old one go to the Trash.
+    ///
+    /// The new name is one a person can read, and is not hidden: should the app be
+    /// stopped partway, the folder is still in plain sight, and put back from the
+    /// Trash it returns to a place that can be found.
     private static func extractReplacing(_ job: ExtractionJob,
                                          engine: ArchiveEngine,
                                          cancellation: CancellationToken?,
                                          progress: ProgressHandler?) async throws -> ExtractionOutcome {
         let fileManager = FileManager.default
-        var aside: [(folder: String, original: URL, holder: URL)] = []
+        var aside: [(folder: String, original: URL, renamed: URL)] = []
 
-        /// Settles every folder that was moved aside, whichever way things went.
+        /// Settles every folder that was renamed, whichever way things went.
         func settle() -> [String] {
             var trashed: [String] = []
             for item in aside {
-                let kept = item.holder.appendingPathComponent(item.original.lastPathComponent)
                 if PathSafety.itemExists(at: item.original) {
-                    // Something took its place, which is what Replace asked for.
-                    if (try? trash(kept)) != nil {
-                        trashed.append(item.folder)
-                    } else {
-                        // It could not be thrown away, so it is not: it stays,
-                        // under a name of its own beside the new one.
-                        try? fileManager.moveItem(at: kept, to: PathSafety.uniqueURL(for: item.original))
-                    }
+                    // Something took its place, which is what Replace asked for. If
+                    // it cannot be thrown away it is not: it stays under its new name.
+                    if (try? trash(item.renamed)) != nil { trashed.append(item.folder) }
                 } else {
-                    try? fileManager.moveItem(at: kept, to: item.original)
+                    try? fileManager.moveItem(at: item.renamed, to: item.original)
                 }
-                try? fileManager.removeItem(at: item.holder)
             }
             return trashed
         }
@@ -142,20 +139,16 @@ public enum ExtractionRunner {
                 // Nor is a folder given up for a file.
                 guard ExtractionConflicts.holdsFolder(ArchivePath.normalize(folder), in: job.allEntries) else { continue }
 
-                // In a folder of its own, so that it keeps its name, which is the
-                // name it will have in the Trash.
-                let holder = existing.deletingLastPathComponent()
-                    .appendingPathComponent(".justarc-replaced-\(UUID().uuidString)")
-                try fileManager.createDirectory(at: holder, withIntermediateDirectories: false)
+                let renamed = PathSafety.uniqueURL(for: existing.deletingLastPathComponent()
+                    .appendingPathComponent(L("%@ (replaced)", existing.lastPathComponent)))
                 do {
-                    try fileManager.moveItem(at: existing, to: holder.appendingPathComponent(existing.lastPathComponent))
+                    try fileManager.moveItem(at: existing, to: renamed)
                 } catch {
-                    try? fileManager.removeItem(at: holder)
                     throw ArchiveError.ioFailure(
                         L("%@ could not be moved out of the way, so it was left as it is. %@",
                           existing.lastPathComponent, error.localizedDescription))
                 }
-                aside.append((folder, existing, holder))
+                aside.append((folder, existing, renamed))
             }
             let produced = try await extractDirectly(job, engine: engine,
                                                      cancellation: cancellation, progress: progress)

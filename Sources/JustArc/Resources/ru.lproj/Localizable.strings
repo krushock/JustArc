@@ -4,6 +4,7 @@
 
 " — Edited" = " — изменён";
 " — packed %@" = " — упаковано %@";
+"%@ (replaced)" = "%@ (заменено)";
 "%@ already exists in the archive." = "«%@» уже есть в архиве.";
 "%@ could not be created. %@" = "Не удалось создать %@. %@";
 "%@ could not be extracted." = "Не удалось извлечь %@.";

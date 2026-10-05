@@ -178,6 +178,43 @@ final class SecondPassSessionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: dated.path), "backup.7z.2024 was deleted: \(after)")
     }
 
+    /// Volumes left by an earlier, larger save of the same name would be read as
+    /// part of the new set, so the ones that continue its numbering are cleared away.
+    func testSavingFewerVolumesClearsAwayTheOnesThatWouldContinueTheSet() async throws {
+        let folder = root.appendingPathComponent("again")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var cleared: [String] = []
+        let realTrash = ExtractionRunner.trash
+        ExtractionRunner.trash = { url in
+            cleared.append(url.lastPathComponent)
+            try FileManager.default.removeItem(at: url)
+        }
+        defer { ExtractionRunner.trash = realTrash }
+
+        func save(bytes: Int) async throws -> [String] {
+            var data = Data(count: bytes)
+            data.withUnsafeMutableBytes { arc4random_buf($0.baseAddress, bytes) }
+            let blob = root.appendingPathComponent("blob-\(bytes).bin")
+            try data.write(to: blob)
+            let session = ArchiveSession(archiveURL: nil)
+            session.stage(items: [blob])
+            try await session.save(to: folder.appendingPathComponent("set.7z"),
+                                   options: CompressionOptions(formatKey: "7z", level: 0, volumeSize: "100k"))
+            return try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+        }
+        let large = try await save(bytes: 450_000)
+        XCTAssertGreaterThanOrEqual(large.count, 5, "\(large)")
+        // A file that only looks a little like a volume, and is not in sequence.
+        try "mine\n".write(to: folder.appendingPathComponent("set.7z.900"), atomically: true, encoding: .utf8)
+
+        let small = try await save(bytes: 150_000)
+        XCTAssertEqual(small, ["set.7z.001", "set.7z.002", "set.7z.900"], "cleared: \(cleared)")
+        XCTAssertFalse(cleared.contains("set.7z.900"))
+        let listing = try await engine.list(archive: folder.appendingPathComponent("set.7z.001"),
+                                            password: nil, encodingCodePage: nil)
+        XCTAssertEqual(listing.entries.map(\.path), ["blob-150000.bin"])
+    }
+
     // MARK: - S8: a staged folder that vanished must fail the save, not become empty
 
     func testAStagedFolderThatVanishedIsNotSavedAsAnEmptyFolder() async throws {

@@ -97,8 +97,8 @@ final class ExtractionRunnerTests: XCTestCase {
         }
         defer { ExtractionRunner.trash = realTrash }
         let outcome = try await ExtractionRunner.run(job(.replace), engine: engine)
-        XCTAssertEqual(trashed, ["payload"], "the folder goes to the Trash under its own name")
-        XCTAssertFalse(contents("").contains { $0.hasPrefix(".justarc-replaced") }, "nothing is left beside it")
+        XCTAssertEqual(trashed, ["payload (replaced)"], "the folder goes to the Trash under a name that says what it is")
+        XCTAssertEqual(contents(""), ["payload"], "nothing is left beside the new folder")
 
         let names = contents("payload")
         XCTAssertFalse(names.contains("of-my-own.txt"), "replace means the old folder is gone")

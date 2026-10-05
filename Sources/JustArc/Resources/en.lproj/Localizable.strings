@@ -4,6 +4,7 @@
 
 " — Edited" = " — Edited";
 " — packed %@" = " — packed %@";
+"%@ (replaced)" = "%@ (replaced)";
 "%@ already exists in the archive." = "%@ already exists in the archive.";
 "%@ could not be created. %@" = "%@ could not be created. %@";
 "%@ could not be extracted." = "%@ could not be extracted.";

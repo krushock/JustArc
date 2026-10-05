@@ -750,7 +750,7 @@ public final class ArchiveSession {
         while let stale = volumeName(number, like: volumes.map(\.lastPathComponent), of: name) {
             let url = folder.appendingPathComponent(stale)
             guard PathSafety.itemExists(at: url) else { break }
-            try? fileManager.trashItem(at: url, resultingItemURL: nil)
+            try? ExtractionRunner.trash(url)
             if PathSafety.itemExists(at: url) { break }
             number += 1
         }
