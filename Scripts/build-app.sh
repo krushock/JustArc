@@ -19,11 +19,7 @@ fi
 echo "Building JustArc ($CONFIG)…"
 cd "$ROOT"
 swift build --configuration "$CONFIG" --product JustArc ${ARCHS[@]+"${ARCHS[@]}"}
-# The two Quick Look extensions, each an executable that is wrapped into a bundle below.
-EXTENSIONS=(JustArcQuickLook JustArcThumbnail)
-for extension in "${EXTENSIONS[@]}"; do
-  swift build --configuration "$CONFIG" --product "$extension" ${ARCHS[@]+"${ARCHS[@]}"}
-done
+swift build --configuration "$CONFIG" --product JustArcQuickLook ${ARCHS[@]+"${ARCHS[@]}"}
 
 BIN="$(swift build --configuration "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)"
 
@@ -87,30 +83,27 @@ else
   exit 1
 fi
 
-# The Quick Look extensions. One is the preview: pressing Space on an archive in the
-# Finder lists what is in it. The other draws the thumbnail the Finder shows in
-# place of the archive's icon. An extension is a bundle of its own inside the app's
-# PlugIns folder, and each carries its own copy of 7z.so: they are sandboxed, and the
-# sandbox does not let them open the app's.
-for extension in "${EXTENSIONS[@]}"; do
-  APPEX="$APP/Contents/PlugIns/$extension.appex"
-  mkdir -p "$APPEX/Contents/MacOS" "$APPEX/Contents/Resources" "$APPEX/Contents/Frameworks"
-  cp "$ROOT/Vendor/7z.so" "$APPEX/Contents/Frameworks/7z.so"
-  cp "$BIN/$extension" "$APPEX/Contents/MacOS/$extension"
-  stamp_sdk "$APPEX/Contents/MacOS/$extension"
-  drop_build_rpaths "$APPEX/Contents/MacOS/$extension"
-  cp "$ROOT/Sources/$extension/Resources/Info.plist" "$APPEX/Contents/Info.plist"
-  # An extension whose version differs from its app's is one macOS may decline to load.
-  for key in CFBundleShortVersionString CFBundleVersion; do
-    /usr/libexec/PlistBuddy -c "Set :$key $(/usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist")" \
-      "$APPEX/Contents/Info.plist"
-  done
-  # Its strings are the app's: the preview is drawn with the same words.
-  for lproj in "$ROOT/Sources/JustArc/Resources/"*.lproj; do
-    [ -f "$lproj/Localizable.strings" ] || continue
-    mkdir -p "$APPEX/Contents/Resources/$(basename "$lproj")"
-    cp "$lproj/Localizable.strings" "$APPEX/Contents/Resources/$(basename "$lproj")/"
-  done
+# The Quick Look extension: pressing Space on an archive in the Finder lists what is
+# in it. An extension is a bundle of its own inside the app's PlugIns folder. It
+# carries its own copy of 7z.so: it is sandboxed, and the sandbox does not let it
+# open the app's.
+APPEX="$APP/Contents/PlugIns/JustArcQuickLook.appex"
+mkdir -p "$APPEX/Contents/MacOS" "$APPEX/Contents/Resources" "$APPEX/Contents/Frameworks"
+cp "$ROOT/Vendor/7z.so" "$APPEX/Contents/Frameworks/7z.so"
+cp "$BIN/JustArcQuickLook" "$APPEX/Contents/MacOS/JustArcQuickLook"
+stamp_sdk "$APPEX/Contents/MacOS/JustArcQuickLook"
+drop_build_rpaths "$APPEX/Contents/MacOS/JustArcQuickLook"
+cp "$ROOT/Sources/JustArcQuickLook/Resources/Info.plist" "$APPEX/Contents/Info.plist"
+# An extension whose version differs from its app's is one macOS may decline to load.
+for key in CFBundleShortVersionString CFBundleVersion; do
+  /usr/libexec/PlistBuddy -c "Set :$key $(/usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist")" \
+    "$APPEX/Contents/Info.plist"
+done
+# Its strings are the app's: the preview is drawn with the same words.
+for lproj in "$ROOT/Sources/JustArc/Resources/"*.lproj; do
+  [ -f "$lproj/Localizable.strings" ] || continue
+  mkdir -p "$APPEX/Contents/Resources/$(basename "$lproj")"
+  cp "$lproj/Localizable.strings" "$APPEX/Contents/Resources/$(basename "$lproj")/"
 done
 
 # Ad-hoc signing keeps Gatekeeper quiet locally; a real build signs with a Developer ID.
@@ -118,16 +111,13 @@ done
 # Apple silicon an unsigned binary is killed at launch, so a failure here is fatal.
 #
 # Signed from the inside out, and the app itself without --deep: that would sign the
-# extensions again without their entitlements, and an extension that is not
-# sandboxed is never loaded.
+# extension again without its entitlements, and an extension that is not sandboxed
+# is never loaded.
 codesign --force --sign - --timestamp=none "$APP/Contents/Frameworks/7z.so"
 codesign --force --deep --sign - --timestamp=none "$APP/Contents/Frameworks/Sparkle.framework"
-for extension in "${EXTENSIONS[@]}"; do
-  APPEX="$APP/Contents/PlugIns/$extension.appex"
-  codesign --force --sign - --timestamp=none "$APPEX/Contents/Frameworks/7z.so"
-  codesign --force --sign - --timestamp=none \
-    --entitlements "$ROOT/Sources/$extension/Resources/$extension.entitlements" "$APPEX"
-done
+codesign --force --sign - --timestamp=none "$APPEX/Contents/Frameworks/7z.so"
+codesign --force --sign - --timestamp=none \
+  --entitlements "$ROOT/Sources/JustArcQuickLook/Resources/JustArcQuickLook.entitlements" "$APPEX"
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --deep --strict "$APP"
 

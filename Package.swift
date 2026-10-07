@@ -91,7 +91,7 @@ let package = Package(
                 .linkedFramework("UniformTypeIdentifiers"),
             ]
         ),
-        // The Quick Look preview extension's executable. An app extension has no main of its
+        // The Quick Look extension's executable. An app extension has no main of its
         // own: it starts in Foundation's NSExtensionMain, which loads the class named
         // in its Info.plist. Scripts/build-app.sh wraps it into the .appex.
         .executableTarget(
@@ -102,19 +102,6 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedFramework("QuickLookUI"),
-                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
-            ]
-        ),
-        // The thumbnail extension's executable, built the same way: the Finder shows
-        // an archive as a page with what is in it.
-        .executableTarget(
-            name: "JustArcThumbnail",
-            dependencies: ["JustArcPreview"],
-            path: "Sources/JustArcThumbnail",
-            exclude: ["Resources"],
-            swiftSettings: [.swiftLanguageMode(.v5)],
-            linkerSettings: [
-                .linkedFramework("QuickLookThumbnailing"),
                 .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
             ]
         ),

@@ -127,11 +127,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 - `Sources/JustArc` — the AppKit app: launch routing, Quick Extract, browser window.
 - `Sources/JustArcPreview` — what Quick Look shows for an archive: the list of its
   contents under its name and a line about it.
-- `Sources/JustArcQuickLook` — the Quick Look preview extension, which is that view
-  plus the one method Quick Look calls.
-- `Sources/JustArcThumbnail` — the Quick Look thumbnail extension, which draws the
-  page `JustArcPreview` describes. `Scripts/build-app.sh` wraps both into
-  `Contents/PlugIns/*.appex`, each sandboxed and with its own copy of `7z.so`.
+- `Sources/JustArcQuickLook` — the Quick Look extension, which is that view plus the
+  one method Quick Look calls. `Scripts/build-app.sh` wraps it into
+  `Contents/PlugIns/JustArcQuickLook.appex`, sandboxed, with its own copy of `7z.so`.
 - `Tests/JustArcAppTests` — drives the app's real views: files dropped on each part of
   the window, files and folders dragged out, and the Settings panes.
 - `Sources/SevenZipBridge` — a small C bridge over 7-Zip's format library, plus the
@@ -161,12 +159,6 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
   left to the Finder's own preview. It is on as soon as JustArc has been opened once,
   and can be turned off in System Settings ▸ General ▸ Login Items & Extensions ▸
   Quick Look.
-- **Thumbnails.** In the Finder's icon and gallery views an archive is drawn as a page
-  headed with its kind, showing what is inside: the icons of the first few items when
-  small, a list of names when there is room. An archive that is empty, encrypted,
-  unreadable or shown smaller than 48 points keeps its ordinary icon, as does a
-  compressed tar over 16 MB, since one would be unwrapped for every pass of the
-  Finder over its folder. Turned off in the same place as the preview.
 - **Finder Services.** Compress, compress choosing a format, extract, and open, all from
   the Finder's right-click Services menu. Extract and open are offered for archives only.
 - **Zip encryption.** The Save panel offers AES-256 or the older ZipCrypto, which is weak
@@ -301,10 +293,6 @@ Each of these has a test built from an archive made to break it, in
   is not unwrapped just to be glanced at. Both say so and open normally in the app.
 - The preview has been run inside Quick Look's sandbox and its drawing checked off
   screen; the two have not been seen together, because nothing here can capture
-  the screen. Thumbnails have been fetched from the system's own thumbnail service
-  and looked at, but not seen in a Finder window, for the same reason.
-- The Finder keeps the thumbnails it has drawn. An archive that already had its
-  ordinary icon cached may keep it until the file changes or the cache is cleared
-  with `qlmanage -r cache`.
+  the screen.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.

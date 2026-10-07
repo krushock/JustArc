@@ -25,9 +25,7 @@ public struct ArchivePreview: Sendable {
     /// The largest compressed tar that is unwrapped just to be looked at.
     public static let unwrapLimit: UInt64 = 256 << 20
 
-    /// - Parameter purpose: what the archive is being read for, for the log.
-    public static func load(_ url: URL, unwrapLimit: UInt64 = ArchivePreview.unwrapLimit,
-                            for purpose: String = "preview") async -> ArchivePreview {
+    public static func load(_ url: URL, unwrapLimit: UInt64 = ArchivePreview.unwrapLimit) async -> ArchivePreview {
         let format = FormatRegistry.format(for: url)
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
@@ -50,12 +48,12 @@ public struct ArchivePreview: Sendable {
             // Nothing here will be extracted, so what was unwrapped to list a
             // compressed tar is given back at once.
             engine.release(archive: url)
-            Diagnostics.log("\(purpose): \(url.lastPathComponent) lists \(listing.entries.count) entries")
+            Diagnostics.log("preview: \(url.lastPathComponent) lists \(listing.entries.count) entries")
             return preview(.listing(listing), named: listing.info.formatName.uppercased())
         } catch let error as ArchiveError where error.isPasswordProblem {
             return preview(.locked)
         } catch {
-            Diagnostics.log("\(purpose): \(url.lastPathComponent) could not be listed: \(error.localizedDescription)")
+            Diagnostics.log("preview: \(url.lastPathComponent) could not be listed: \(error.localizedDescription)")
             return preview(.unreadable(error.localizedDescription))
         }
     }
