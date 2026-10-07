@@ -326,6 +326,7 @@
 "The format rejected a setting: %@." = "The format rejected a setting: %@.";
 "The link %@ could not be read." = "The link %@ could not be read.";
 "The name was given the extension that matches the chosen format." = "The name was given the extension that matches the chosen format.";
+"The names of the files in this archive are encrypted. Open it in JustArc to enter the password." = "The names of the files in this archive are encrypted. Open it in JustArc to enter the password.";
 "The operation was cancelled." = "The operation was cancelled.";
 "The password is incorrect." = "The password is incorrect.";
 "The server refused the request." = "The server refused the request.";
@@ -336,7 +337,9 @@
 "There is nothing to put in the disk image." = "There is nothing to put in the disk image.";
 "There is nothing to save. Add files to the archive first." = "There is nothing to save. Add files to the archive first.";
 "There is nowhere to write the archive." = "There is nowhere to write the archive.";
+"This archive has to be decompressed in full before its contents can be listed. Open it in JustArc to see what is inside." = "This archive has to be decompressed in full before its contents can be listed. Open it in JustArc to see what is inside.";
 "This archive is empty" = "This archive is empty";
+"This archive is empty." = "This archive is empty.";
 "This archive is password protected." = "This archive is password protected.";
 "This changes the archive on disk and cannot be undone." = "This changes the archive on disk and cannot be undone.";
 "This download could not be checked." = "This download could not be checked.";

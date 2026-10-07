@@ -326,6 +326,7 @@
 "The format rejected a setting: %@." = "Формат отклонил настройку: %@.";
 "The link %@ could not be read." = "Не удалось прочитать ссылку %@.";
 "The name was given the extension that matches the chosen format." = "К имени добавлено расширение, соответствующее выбранному формату.";
+"The names of the files in this archive are encrypted. Open it in JustArc to enter the password." = "Имена файлов в этом архиве зашифрованы. Откройте его в JustArc, чтобы ввести пароль.";
 "The operation was cancelled." = "Операция отменена.";
 "The password is incorrect." = "Неверный пароль.";
 "The server refused the request." = "Сервер отклонил запрос.";
@@ -336,7 +337,9 @@
 "There is nothing to put in the disk image." = "Нечего помещать в образ диска.";
 "There is nothing to save. Add files to the archive first." = "Нечего сохранять. Сначала добавьте файлы в архив.";
 "There is nowhere to write the archive." = "Архив некуда записать.";
+"This archive has to be decompressed in full before its contents can be listed. Open it in JustArc to see what is inside." = "Чтобы показать содержимое этого архива, его нужно распаковать целиком. Откройте его в JustArc, чтобы увидеть, что внутри.";
 "This archive is empty" = "Этот архив пуст";
+"This archive is empty." = "Этот архив пуст.";
 "This archive is password protected." = "Архив защищён паролем.";
 "This changes the archive on disk and cannot be undone." = "Это изменит архив на диске, отменить будет нельзя.";
 "This download could not be checked." = "Эту загрузку не удалось проверить.";

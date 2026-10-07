@@ -79,6 +79,32 @@ let package = Package(
                 .linkedFramework("UniformTypeIdentifiers"),
             ]
         ),
+        // What Quick Look shows for an archive. A library, so that the tests can
+        // draw it without Quick Look.
+        .target(
+            name: "JustArcPreview",
+            dependencies: ["JustArcCore"],
+            path: "Sources/JustArcPreview",
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .linkedFramework("UniformTypeIdentifiers"),
+            ]
+        ),
+        // The Quick Look extension's executable. An app extension has no main of its
+        // own: it starts in Foundation's NSExtensionMain, which loads the class named
+        // in its Info.plist. Scripts/build-app.sh wraps it into the .appex.
+        .executableTarget(
+            name: "JustArcQuickLook",
+            dependencies: ["JustArcPreview"],
+            path: "Sources/JustArcQuickLook",
+            exclude: ["Resources"],
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [
+                .linkedFramework("QuickLookUI"),
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
+            ]
+        ),
         .testTarget(
             name: "JustArcCoreTests",
             dependencies: ["JustArcCore"],
@@ -88,7 +114,7 @@ let package = Package(
         // Drives the app's real views: drops, drags out and the Settings panes.
         .testTarget(
             name: "JustArcAppTests",
-            dependencies: ["JustArc", "JustArcCore"],
+            dependencies: ["JustArc", "JustArcCore", "JustArcPreview"],
             path: "Tests/JustArcAppTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

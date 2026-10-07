@@ -29,6 +29,12 @@ echo "==> Building release binary"
 echo "==> Stamping version $VERSION"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%Y%m%d%H%M)" "$APP/Contents/Info.plist"
+# The Quick Look extension carries the same version as the app it is part of.
+APPEX="$APP/Contents/PlugIns/JustArcQuickLook.appex"
+for key in CFBundleShortVersionString CFBundleVersion; do
+  /usr/libexec/PlistBuddy -c "Set :$key $(/usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist")" \
+    "$APPEX/Contents/Info.plist"
+done
 
 echo "==> Signing with: $IDENTITY"
 if [ "$IDENTITY" = "-" ]; then
@@ -59,6 +65,12 @@ if [ -d "$SPARKLE_FW" ]; then
 fi
 
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APP/Contents/Frameworks/7z.so"
+# The extension is sandboxed, which is what its entitlements say; without them it
+# is not loaded. It has a copy of 7z.so of its own, signed first.
+codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APPEX/Contents/Frameworks/7z.so"
+codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} \
+  --entitlements "$ROOT/Sources/JustArcQuickLook/Resources/JustArcQuickLook.entitlements" \
+  "$APPEX"
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} \
   --entitlements "$ROOT/Sources/JustArc/Resources/JustArc.entitlements" \
   "$APP"

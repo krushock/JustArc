@@ -125,6 +125,11 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 - `Sources/JustArcCore` — engine, models and safety checks. No AppKit, fully tested.
 - `Sources/JustArc` — the AppKit app: launch routing, Quick Extract, browser window.
+- `Sources/JustArcPreview` — what Quick Look shows for an archive: the list of its
+  contents under its name and a line about it.
+- `Sources/JustArcQuickLook` — the Quick Look extension, which is that view plus the
+  one method Quick Look calls. `Scripts/build-app.sh` wraps it into
+  `Contents/PlugIns/JustArcQuickLook.appex`, sandboxed, with its own copy of `7z.so`.
 - `Tests/JustArcAppTests` — drives the app's real views: files dropped on each part of
   the window, files and folders dragged out, and the Settings panes.
 - `Sources/SevenZipBridge` — a small C bridge over 7-Zip's format library, plus the
@@ -148,6 +153,12 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
   placeholders with no data on disk. JustArc asks the provider to fetch one before
   reading it, shows a cancellable download panel, and names the provider if it fails.
 
+- **Quick Look.** Select an archive in the Finder and press Space to see what is in
+  it, as folders that open, with sizes and dates. Nothing is extracted and nothing is
+  asked: an archive whose file names are encrypted says so instead. Disk images are
+  left to the Finder's own preview. It is on as soon as JustArc has been opened once,
+  and can be turned off in System Settings ▸ General ▸ Login Items & Extensions ▸
+  Quick Look.
 - **Finder Services.** Compress, compress choosing a format, extract, and open, all from
   the Finder's right-click Services menu. Extract and open are offered for archives only.
 - **Zip encryption.** The Save panel offers AES-256 or the older ZipCrypto, which is weak
@@ -273,5 +284,15 @@ Each of these has a test built from an archive made to break it, in
 - An item nested more than 512 folders deep is not listed. No path that long can
   exist on macOS, so it could never be extracted, and archives built to be that deep
   are built to exhaust whatever opens them.
+- When another app's Quick Look extension claims the same kind of file, macOS picks
+  one of the two and gives no say in which. On a Mac with BetterZip installed, its
+  preview is the one shown for zip, 7z, RAR and tar until it is turned off in System
+  Settings.
+- The Quick Look preview is given the one file being looked at, so an archive split
+  into volumes cannot be listed from there, and a compressed tar larger than 256 MB
+  is not unwrapped just to be glanced at. Both say so and open normally in the app.
+- The preview has been run inside Quick Look's sandbox and its drawing checked off
+  screen; the two have not been seen together, because nothing here can capture
+  the screen.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.
