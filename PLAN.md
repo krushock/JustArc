@@ -104,7 +104,7 @@ Declare `CFBundleDocumentTypes` (Viewer for read-only, Editor for writable) for:
 | M5 | In-process 7-Zip | **done** | 7-Zip 25.01 built from source as `7z.so`, loaded through a C bridge: no subprocess, no passwords in argv, split volumes read back, zip encryption method selectable in the engine |
 | M6 | Fit into the Finder | **done** | Settings ▸ File Types with a default app per kind of archive; extract, open or ask on double-click; Dock drop and Services always open a window; drops accepted anywhere in the window; folders drag out; `__MACOSX` hidden; app-level drag-and-drop tests |
 | M7 | Review and hardening | **done** | Three independent reviews (bridge, engines, app) and the fixes they led to: atomic file replacement on extraction, hostile-archive defences, RAR argument handling, split saves, one operation at a time per window, passwords asked for when needed and remembered only once proven, quit and close that ask before losing work |
-| M8 | Quick Look | **done** | A sandboxed preview extension inside the app: Space on an archive in the Finder lists its contents. Built and signed by the same script as the app, with no Xcode project |
+| M8 | Quick Look | **done** | Two sandboxed extensions inside the app: Space on an archive in the Finder lists its contents, and its thumbnail shows what is inside. Built and signed by the same script as the app, with no Xcode project |
 | M9 | Later | not started | XADMaster for sit/legacy, App Store variant, Shortcuts actions |
 
 **What is not verified.** Notarization needs a Developer ID Application certificate, and
@@ -112,7 +112,7 @@ this machine has only an Apple Development one. The release script runs end to e
 otherwise: hardened runtime, entitlements, and a deep signature over the app, the 7-Zip
 library and the Sparkle framework, all confirmed with `codesign --verify --deep --strict`.
 Sparkle is embedded and starts, but no appcast is published, so there is nothing to find.
-Quick Actions proper would need another app extension. The Quick Look one shows that a
+Quick Actions proper would need another app extension. The Quick Look ones show that a
 hand-assembled bundle can carry them; for now the Services menu covers the same ground.
 
 **Note on the dmg engine.** `DMGEngine` attaches images read-only through `hdiutil`

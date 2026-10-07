@@ -151,39 +151,137 @@ final class QuickLookPreviewTests: XCTestCase {
         XCTAssertNotNil(preview.message)
     }
 
-    // MARK: - The extension's own description
+    // MARK: - Thumbnails
 
-    private func extensionFile(_ relative: String) -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/JustArcQuickLook").appendingPathComponent(relative)
+    func testAThumbnailShowsWhatIsInsideTheOneFolder() async throws {
+        let archive = root.appendingPathComponent("Project.tar.gz")
+        try await engine.create(archive: archive, items: [try makeProject()],
+                                options: CompressionOptions(formatKey: "tgz"))
+        let preview = await ArchivePreview.load(archive)
+        let thumbnail = try XCTUnwrap(ArchiveThumbnail(preview))
+        XCTAssertEqual(thumbnail.badge, "TGZ")
+        XCTAssertEqual(thumbnail.items.map(\.name), ["Assets", "Docs", "Sources", "README.md"])
+        XCTAssertEqual(thumbnail.items.map(\.isDirectory), [true, true, true, false])
+
+        // Drawn at the sizes the Finder asks for, from icon view to gallery.
+        for side in [64, 128, 256, 512] {
+            let bitmap = try XCTUnwrap(thumbnail.bitmap(fitting: CGSize(width: side, height: side)))
+            XCTAssertEqual(bitmap.pixelsHigh, side * 2)
+            // The page is white down its edge and the band across the top is not.
+            // Rows of a bitmap are counted from the top.
+            let edge = try XCTUnwrap(bitmap.colorAt(x: bitmap.pixelsWide - 6, y: bitmap.pixelsHigh / 2))
+            XCTAssertGreaterThan(min(edge.redComponent, edge.greenComponent, edge.blueComponent), 0.95, "at \(side)")
+            XCTAssertEqual(edge.alphaComponent, 1, "at \(side)")
+            // Outside the page's rounded corners there is nothing at all.
+            XCTAssertEqual(bitmap.colorAt(x: 0, y: 0)?.alphaComponent, 0, "at \(side)")
+            let band = try XCTUnwrap(bitmap.colorAt(x: bitmap.pixelsWide / 8, y: bitmap.pixelsHigh / 12))
+            XCTAssertLessThan(band.redComponent, 0.5, "at \(side)")
+            if let folder = ProcessInfo.processInfo.environment["JUSTARC_PREVIEW_SNAPSHOTS"] {
+                try bitmap.representation(using: .png, properties: [:])?
+                    .write(to: URL(fileURLWithPath: folder).appendingPathComponent("thumbnail-\(side).png"))
+            }
+        }
     }
 
-    private func supportedTypes() throws -> [String] {
-        let data = try Data(contentsOf: extensionFile("Resources/Info.plist"))
+    func testAThumbnailOfManyThingsSaysHowManyMore() throws {
+        let items = (1...40).map { ArchiveThumbnail.Item(name: "Photo \($0).jpg", isDirectory: false) }
+        let thumbnail = ArchiveThumbnail(badge: "ZIP", items: [.init(name: "Albums", isDirectory: true)] + items)
+        let bitmap = try XCTUnwrap(thumbnail.bitmap(fitting: CGSize(width: 256, height: 256)))
+        if let folder = ProcessInfo.processInfo.environment["JUSTARC_PREVIEW_SNAPSHOTS"] {
+            try bitmap.representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: folder).appendingPathComponent("thumbnail-many.png"))
+        }
+    }
+
+    func testThereIsNoThumbnailWhenThereIsNothingToShow() async throws {
+        let locked = root.appendingPathComponent("Secret.7z")
+        try await engine.create(archive: locked, items: [try makeProject()],
+                                options: CompressionOptions(formatKey: "7z", password: "sesame", encryptFileNames: true))
+        let impostor = try write("not an archive\n", "broken.zip")
+        let empty = root.appendingPathComponent("empty.zip")
+        try Data([0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18)).write(to: empty)
+        for archive in [locked, impostor, empty] {
+            let preview = await ArchivePreview.load(archive)
+            XCTAssertNil(ArchiveThumbnail(preview), "\(archive.lastPathComponent) keeps its ordinary icon")
+        }
+        // Nor is a compressed tar unwrapped for one beyond a small size.
+        let tar = root.appendingPathComponent("Project.tar.gz")
+        try await engine.create(archive: tar, items: [try makeProject()], options: CompressionOptions(formatKey: "tgz"))
+        let preview = await ArchivePreview.load(tar, unwrapLimit: 16)
+        XCTAssertNil(ArchiveThumbnail(preview))
+    }
+
+    func testThePageIsUprightAndFitsWhatWasAskedFor() {
+        let square = ArchiveThumbnail.pageSize(fitting: CGSize(width: 256, height: 256))
+        XCTAssertEqual(square.height, 256)
+        XCTAssertEqual(square.width, 197)
+        let wide = ArchiveThumbnail.pageSize(fitting: CGSize(width: 400, height: 100))
+        XCTAssertEqual(wide, CGSize(width: 77, height: 100))
+        let narrow = ArchiveThumbnail.pageSize(fitting: CGSize(width: 77, height: 400))
+        XCTAssertEqual(narrow, CGSize(width: 77, height: 100))
+        // What Quick Look asks for as a minimum is honoured over the page's shape.
+        let fixed = ArchiveThumbnail.pageSize(fitting: CGSize(width: 64, height: 64), atLeast: CGSize(width: 64, height: 64))
+        XCTAssertEqual(fixed, CGSize(width: 64, height: 64))
+    }
+
+    // MARK: - The extensions' own descriptions
+
+    /// The two extensions: the folder each is in, the file its class is in, and the
+    /// place in Quick Look it is for.
+    private let extensions = [
+        (target: "JustArcQuickLook", source: "PreviewViewController.swift", point: "com.apple.quicklook.preview"),
+        (target: "JustArcThumbnail", source: "ThumbnailProvider.swift", point: "com.apple.quicklook.thumbnail"),
+    ]
+
+    private func extensionFile(_ target: String, _ relative: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources").appendingPathComponent(target).appendingPathComponent(relative)
+    }
+
+    private func supportedTypes(of target: String, source: String, point: String) throws -> [String] {
+        let data = try Data(contentsOf: extensionFile(target, "Resources/Info.plist"))
         let plist = try XCTUnwrap(try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        XCTAssertEqual(plist["CFBundleExecutable"] as? String, target)
         let declaration = try XCTUnwrap(plist["NSExtension"] as? [String: Any])
-        XCTAssertEqual(declaration["NSExtensionPointIdentifier"] as? String, "com.apple.quicklook.preview")
+        XCTAssertEqual(declaration["NSExtensionPointIdentifier"] as? String, point)
         // The class is found by the name it is given for Objective-C.
         let principal = try XCTUnwrap(declaration["NSExtensionPrincipalClass"] as? String)
-        let source = try String(contentsOf: extensionFile("PreviewViewController.swift"), encoding: .utf8)
-        XCTAssertTrue(source.contains("@objc(\(principal))"), "Info.plist names a class the extension does not have")
+        let code = try String(contentsOf: extensionFile(target, source), encoding: .utf8)
+        XCTAssertTrue(code.contains("@objc(\(principal))"), "\(target)'s Info.plist names a class it does not have")
+        // Without the sandbox the extension is never loaded.
+        let entitlements = try Data(contentsOf: extensionFile(target, "Resources/\(target).entitlements"))
+        let granted = try XCTUnwrap(try PropertyListSerialization.propertyList(from: entitlements, format: nil) as? [String: Any])
+        XCTAssertEqual(granted["com.apple.security.app-sandbox"] as? Bool, true, target)
         let attributes = try XCTUnwrap(declaration["NSExtensionAttributes"] as? [String: Any])
         return try XCTUnwrap(attributes["QLSupportedContentTypes"] as? [String])
     }
 
-    func testTheExtensionClaimsArchivesAndNotDiskImages() throws {
-        let claimed = try supportedTypes()
-        XCTAssertEqual(Set(claimed).count, claimed.count)
-        for diskImage in ["public.disk-image", "com.apple.disk-image-udif", "public.archive", "public.data"] {
-            XCTAssertFalse(claimed.contains(diskImage), "\(diskImage) would take previews away from things that are not archives")
-        }
-        // Every kind the app offers itself for, as far as this Mac knows the type.
-        for kind in AssociableFileType.all where kind.extensions != ["dmg"] {
-            for ext in kind.extensions {
-                guard let type = UTType(filenameExtension: ext), !type.identifier.hasPrefix("dyn.") else { continue }
-                XCTAssertTrue(claimed.contains(type.identifier), ".\(ext) is \(type.identifier), which the extension does not claim")
+    func testTheExtensionsClaimArchivesAndNotDiskImages() throws {
+        var lists: [[String]] = []
+        for item in extensions {
+            let claimed = try supportedTypes(of: item.target, source: item.source, point: item.point)
+            lists.append(claimed)
+            XCTAssertEqual(Set(claimed).count, claimed.count)
+            for diskImage in ["public.disk-image", "com.apple.disk-image-udif", "public.archive", "public.data"] {
+                XCTAssertFalse(claimed.contains(diskImage),
+                               "\(diskImage) would take \(item.target) to things that are not archives")
+            }
+            // Every kind the app offers itself for, as far as this Mac knows the type.
+            for kind in AssociableFileType.all where kind.extensions != ["dmg"] {
+                for ext in kind.extensions {
+                    guard let type = UTType(filenameExtension: ext), !type.identifier.hasPrefix("dyn.") else { continue }
+                    XCTAssertTrue(claimed.contains(type.identifier),
+                                  ".\(ext) is \(type.identifier), which \(item.target) does not claim")
+                }
             }
         }
+        XCTAssertEqual(lists.first, lists.last, "an archive with a preview and no thumbnail, or the reverse")
+
+        // The size below which no thumbnail is drawn is said in two places.
+        let data = try Data(contentsOf: extensionFile("JustArcThumbnail", "Resources/Info.plist"))
+        let plist = try XCTUnwrap(try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        let attributes = (plist["NSExtension"] as? [String: Any])?["NSExtensionAttributes"] as? [String: Any]
+        XCTAssertEqual(attributes?["QLThumbnailMinimumDimension"] as? Int, Int(ArchiveThumbnail.minimumDimension))
     }
 }
