@@ -158,6 +158,9 @@ enum MainMenuBuilder {
     private static func helpMenuItem() -> NSMenuItem {
         submenu("Help") { menu in
             add(menu, "Supported Formats", #selector(AppDelegate.showSupportedFormats(_:)))
+            menu.addItem(.separator())
+            add(menu, "Privacy", #selector(AppDelegate.showPrivacy(_:)))
+            add(menu, "Acknowledgements", #selector(AppDelegate.showAcknowledgements(_:)))
         }
     }
 }

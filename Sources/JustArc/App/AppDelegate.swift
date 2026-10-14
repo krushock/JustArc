@@ -25,8 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Preferences.registerDefaults()
         // Left by a run that did not get to tidy up.
         ScratchSpace.removeAbandoned()
-        Diagnostics.log("launch: ui language \(Bundle.main.preferredLocalizations.first ?? "?"), "
-                        + "\"Extract To\" reads as \"\(L("Extract To"))\"")
+        Diagnostics.log("launch: ui language \(public: Bundle.main.preferredLocalizations.first ?? "?"), \"Extract To\" reads as \"\(public: L("Extract To"))\"")
         recentMenu.open = { [weak self] url in self?.openInBrowser(url) }
         NSApp.mainMenu = MainMenuBuilder.build(recentMenu: recentMenu.menu)
         quickExtract.onAllJobsFinished = { [weak self] in
@@ -91,8 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             source: sender.source,
             hasVisibleBrowserWindow: browserControllers.contains { $0.window?.isVisible == true },
             optionHeld: NSEvent.modifierFlags.contains(.option))
-        Diagnostics.log("open request: \(archives.count) archive(s) from \(sender.description), "
-                        + "action \(action.rawValue)")
+        Diagnostics.log("open request: \(public: archives.count) archive(s) from \(public: sender.description), action \(public: action.rawValue)")
         perform(action, on: archives)
     }
 
@@ -295,8 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         let pristine = browserControllers.first(where: \.isPristine)
-        Diagnostics.log("opening \(archive.lastPathComponent) "
-                        + (pristine != nil ? "in place of the empty window" : "in a new window"))
+        Diagnostics.log("opening \(archive.lastPathComponent) \(public: pristine != nil ? "in place of the empty window" : "in a new window")")
         let controller = makeBrowserWindow(for: archive, replacing: pristine)
         controller.loadArchive()
     }
@@ -357,11 +354,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         alert.runModal()
     }
 
+    /// The licences of what JustArc is built on, as they were shipped with it.
+    @objc func showAcknowledgements(_ sender: Any?) {
+        let files = ["7-Zip-License.txt", "Sparkle-License.txt"].compactMap {
+            Bundle.main.url(forResource: ($0 as NSString).deletingPathExtension, withExtension: "txt")
+        }
+        guard !files.isEmpty else { return }
+        let editor = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TextEdit")
+        if let editor {
+            let configuration = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.open(files, withApplicationAt: editor, configuration: configuration)
+        } else {
+            files.forEach { NSWorkspace.shared.open($0) }
+        }
+    }
+
+    /// What JustArc sends anywhere, which is very little, said in the app itself.
+    @objc func showPrivacy(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = L("Privacy")
+        alert.informativeText = L("JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac.")
+        alert.addButton(withTitle: L("OK"))
+        alert.runModal()
+    }
+
     @objc func showAbout(_ sender: Any?) {
         // The standard panel already knows the app's name, icon and version; only the
         // credits are ours to supply.
         let credits = NSAttributedString(
-            string: L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool.", SevenZipVersion.short),
+            string: L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.", SevenZipVersion.short),
             attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                 .foregroundColor: NSColor.labelColor,

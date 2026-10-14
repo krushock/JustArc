@@ -138,7 +138,7 @@ public struct DMGEngine: ArchiveEngine {
             }
         }
 
-        Diagnostics.log("extract \(archive.lastPathComponent): \(jobs.count) job(s) from \(image.mountPoints.count) mount(s) -> \(destination.path)")
+        Diagnostics.log("extract \(archive.lastPathComponent): \(public: jobs.count) job(s) from \(public: image.mountPoints.count) mount(s) -> \(destination.path)")
         guard !jobs.isEmpty else {
             throw ArchiveError.ioFailure(
                 L("Nothing in %@ could be read. The image mounted but appeared empty.", archive.lastPathComponent))
@@ -482,7 +482,7 @@ public struct DMGEngine: ArchiveEngine {
                                                  stdin: stdinPayload(password: encrypted ? password : nil))
 
         guard result.exitCode == 0 else {
-            Diagnostics.log("attach failed for \(archive.lastPathComponent): exit \(result.exitCode) — \(result.standardError)")
+            Diagnostics.log("attach failed for \(archive.lastPathComponent): exit \(public: result.exitCode) — \(result.standardError)")
             try? FileManager.default.removeItem(at: mountRoot)
             // An image the user has already opened in the Finder cannot be attached
             // a second time, and does not need to be: it is read where it is.
@@ -494,7 +494,7 @@ public struct DMGEngine: ArchiveEngine {
         }
 
         let (devEntry, mountPoints) = Self.parseAttachOutput(result.standardOutput)
-        Diagnostics.log("attached \(archive.lastPathComponent): dev=\(devEntry ?? "nil") mounts=\(mountPoints.map(\.path))")
+        Diagnostics.log("attached \(archive.lastPathComponent): dev=\(public: devEntry ?? "nil") mounts=\(mountPoints.map(\.path))")
         guard let devEntry, !mountPoints.isEmpty else {
             // Attached but with nothing mounted: it must still be given back, or the
             // device stays attached and, being hidden from the Finder, unnoticed.

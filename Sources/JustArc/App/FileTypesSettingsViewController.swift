@@ -199,7 +199,7 @@ final class FileTypesSettingsViewController: SettingsPaneViewController,
             for (type, app) in changes where FileAssociations.defaultApp(for: type) != app {
                 do {
                     try await FileAssociations.setDefault(app, for: type)
-                    Diagnostics.log("file types: \(type.identifier) now opens with \(app.lastPathComponent)")
+                    Diagnostics.log("file types: \(public: type.identifier) now opens with \(app.lastPathComponent)")
                 } catch where FileAssociations.isUserCancellation(error) {
                     // macOS asked and the answer was no. Asking about the rest of
                     // the list would only repeat the question.

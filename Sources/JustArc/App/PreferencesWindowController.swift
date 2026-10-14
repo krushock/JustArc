@@ -14,6 +14,7 @@ final class PreferencesWindowController: NSWindowController {
         tabs.tabStyle = .toolbar
 
         let panes: [(NSViewController, String, String)] = [
+            (GeneralSettingsViewController(), L("General"), "gearshape"),
             (ExtractionSettingsViewController(), L("Extracting"), "arrow.down.document"),
             (ArchiveSettingsViewController(), L("Archives"), "shippingbox"),
             (FileTypesSettingsViewController(), L("File Types"), "doc.badge.gearshape"),
@@ -84,6 +85,37 @@ class SettingsPaneViewController: NSViewController {
         super.viewWillAppear()
         view.layoutSubtreeIfNeeded()
         preferredContentSize = view.fittingSize
+    }
+}
+
+// MARK: - General
+
+@MainActor
+final class GeneralSettingsViewController: SettingsPaneViewController {
+    private let updatesBox = NSButton(checkboxWithTitle: L("Check for updates automatically"), target: nil, action: nil)
+
+    override func loadView() {
+        super.loadView()
+        updatesBox.target = self
+        updatesBox.action = #selector(valueChanged)
+        let privacy = NSButton(title: L("Privacy…"), target: NSApp.delegate, action: #selector(AppDelegate.showPrivacy(_:)))
+        privacy.bezelStyle = .rounded
+        install(NSGridView(views: [
+            [caption(L("Updates:")), updatesBox],
+            [NSGridCell.emptyContentView, note(L("Once a day JustArc asks justarc.app whether there is a newer version. The request carries the name and version of JustArc, and, as any request to a website does, your IP address. Nothing about your files is sent, and nothing else is collected."))],
+            [NSGridCell.emptyContentView, privacy],
+        ]))
+    }
+
+    override func viewWillAppear() {
+        let updates = UpdateController.shared
+        updatesBox.isEnabled = updates?.isAvailable == true
+        updatesBox.state = updates?.checksAutomatically == true ? .on : .off
+        super.viewWillAppear()
+    }
+
+    @objc private func valueChanged() {
+        UpdateController.shared?.checksAutomatically = updatesBox.state == .on
     }
 }
 
@@ -334,6 +366,23 @@ final class RarSettingsViewController: SettingsPaneViewController {
     }
 
     @objc private func download() {
+        // RARLAB's terms are theirs, and are agreed to before anything is fetched,
+        // not discovered once it is installed.
+        let alert = NSAlert()
+        alert.messageText = L("Download RAR from RARLAB?")
+        alert.informativeText = L("RAR's tools are made by RARLAB and are trial software under RARLAB's own licence, which JustArc does not grant: RARLAB asks for a licence to be bought to keep using them. The licence comes with the download, and RARLAB's website has the details.")
+        alert.addButton(withTitle: L("Download"))
+        alert.addButton(withTitle: L("Cancel"))
+        alert.addButton(withTitle: L("Visit RARLAB"))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            break
+        case .alertThirdButtonReturn:
+            NSWorkspace.shared.open(RarToolInstaller.website)
+            return
+        default:
+            return
+        }
         downloadButton.isEnabled = false
         chooseButton.isEnabled = false
         spinner.startAnimation(nil)

@@ -70,8 +70,7 @@ public enum CloudFile {
         let before = status(of: url)
         guard before.needsDownload else { return }
 
-        Diagnostics.log("materializing \(url.lastPathComponent) from "
-                        + "\(before.providerName ?? "a cloud provider")")
+        Diagnostics.log("materializing \(url.lastPathComponent) from \(public: before.providerName ?? "a cloud provider")")
         progress?(ArchiveProgress(fraction: nil, currentFile: url.lastPathComponent))
 
         // Harmless for non-iCloud providers, and it starts the fetch for iCloud ones.

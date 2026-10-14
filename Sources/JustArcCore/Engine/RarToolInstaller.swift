@@ -12,6 +12,9 @@ public enum RarToolInstaller {
     public static let fallbackVersion = "723"
     private static let downloadPage = URL(string: "https://www.rarlab.com/download.htm")!
 
+    /// RARLAB's own site, for its licence terms and prices.
+    public static let website = URL(string: "https://www.rarlab.com/")!
+
     public enum InstallerError: LocalizedError {
         case unsupportedArchitecture
         case downloadFailed(String)
@@ -179,7 +182,7 @@ public enum RarToolInstaller {
 
         progress(nil)
         let source = await latestDownloadURL()
-        Diagnostics.log("downloading rar from \(source.absoluteString)")
+        Diagnostics.log("downloading rar from \(public: source.absoluteString)")
 
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("justarc-rar-\(UUID().uuidString)")
@@ -197,7 +200,7 @@ public enum RarToolInstaller {
         if result != .verified, let (data, _) = try? await URLSession.shared.data(from: homebrewCask) {
             result = verdict(digest: digest, fileName: fileName, published: checksums(fromHomebrewCask: data))
         }
-        Diagnostics.log("rar download \(fileName): sha256 \(digest), \(result)")
+        Diagnostics.log("rar download \(public: fileName): sha256 \(public: digest), \(public: result)")
         switch result {
         case .verified:
             break
@@ -244,7 +247,7 @@ public enum RarToolInstaller {
         // Clear any stale override so the freshly installed copy is the one used.
         UserDefaults.standard.removeObject(forKey: "RARToolPath")
         progress(1)
-        Diagnostics.log("installed rar \(version) at \(tool.path)")
+        Diagnostics.log("installed rar \(public: version) at \(tool.path)")
         return Installation(tool: tool, version: version, wasVerified: result == .verified)
     }
 

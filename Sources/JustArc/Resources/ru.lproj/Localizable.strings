@@ -43,11 +43,12 @@
 "4480 MB (DVD)" = "4480 МБ (DVD)";
 "7-Zip cannot write this format." = "7-Zip не может записывать этот формат.";
 "700 MB (CD)" = "700 МБ (CD)";
-"A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Disk images use the system hdiutil tool." = "Быстрый архиватор для macOS.\n\nСжатие работает на 7-Zip %@ по лицензии GNU LGPL. Образы дисков используют системную утилиту hdiutil.";
+"A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full." = "Быстрый архиватор для macOS.\n\nСжатие работает на 7-Zip %@ по лицензии GNU LGPL. Обновления доставляет Sparkle по лицензии MIT. Образы дисков обрабатывает системная утилита hdiutil. Полные тексты лицензий — в меню «Справка ▸ Благодарности».";
 "A folder named “%@” already exists in “%@”." = "Папка «%@» уже есть в «%@».";
 "A name cannot contain a slash." = "Имя не может содержать косую черту.";
 "AES-256 (strong)" = "AES-256 (надёжное)";
 "About JustArc" = "О программе JustArc";
+"Acknowledgements" = "Благодарности";
 "Add" = "Добавить";
 "Add Files" = "Добавить файлы";
 "Add Files…" = "Добавить файлы…";
@@ -70,6 +71,7 @@
 "Cancelling…" = "Отмена…";
 "Central European (Windows 1250)" = "Центральноевропейская (Windows 1250)";
 "Check for Updates…" = "Проверить обновления…";
+"Check for updates automatically" = "Автоматически проверять обновления";
 "Check the password for %@ and try again." = "Проверьте пароль для %@ и попробуйте снова.";
 "Checking…" = "Проверка…";
 "Choose" = "Выбрать";
@@ -112,6 +114,8 @@
 "Do not split" = "Не разбивать";
 "Document" = "Документ";
 "Double-clicking an archive:" = "Двойной щелчок по архиву:";
+"Download" = "Загрузить";
+"Download RAR from RARLAB?" = "Загрузить RAR с сайта RARLAB?";
 "Download RAR…" = "Загрузить RAR…";
 "Downloading %@" = "Загрузка %@";
 "Downloading from rarlab.com…" = "Загрузка с rarlab.com…";
@@ -156,6 +160,7 @@
 "Format: %@" = "Формат: %@";
 "Forward" = "Вперёд";
 "Found at %@" = "Найдено: %@";
+"General" = "Основные";
 "Help" = "Справка";
 "Hide JustArc" = "Скрыть JustArc";
 "Hide Others" = "Скрыть остальные";
@@ -183,6 +188,7 @@
 "JustArc is missing its archive engine." = "Отсутствует архивный движок JustArc.";
 "JustArc is running outside an app bundle, so it cannot be chosen here." = "JustArc запущен не из пакета приложения, поэтому выбрать его здесь нельзя.";
 "JustArc is still working. Quit anyway?" = "JustArc ещё работает. Всё равно завершить?";
+"JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac." = "JustArc работает на вашем Mac. Он не собирает, не хранит и не отправляет ничего о вас или ваших файлах, и в нём нет аналитики или слежки.\n\nВ интернет он обращается только:\n• чтобы раз в день узнать на justarc.app, нет ли новой версии, если вы это разрешили. Запрос содержит название и версию JustArc и, как любой запрос, ваш IP-адрес;\n• когда вы просите загрузить инструменты RAR — с rarlab.com, сверяя их с записью на formulae.brew.sh.\n\nПароли, которые вы решили запомнить, хранятся в вашей связке ключей входа на этом Mac.";
 "Keep Both" = "Оставить оба";
 "Keep Unchanged" = "Оставить как есть";
 "Keep both" = "Оставлять оба";
@@ -211,6 +217,7 @@
 "Nothing was extracted from %@." = "Из архива %@ ничего не извлечено.";
 "Nothing was extracted." = "Ничего не извлечено.";
 "OK" = "OK";
+"Once a day JustArc asks justarc.app whether there is a newer version. The request carries the name and version of JustArc, and, as any request to a website does, your IP address. Nothing about your files is sent, and nothing else is collected." = "Раз в день JustArc спрашивает у justarc.app, нет ли новой версии. Запрос содержит название и версию JustArc и, как любой запрос к сайту, ваш IP-адрес. Ничего о ваших файлах не отправляется, и больше ничего не собирается.";
 "One item already exists in “%@”." = "В папке «%@» уже есть такой объект.";
 "Open" = "Открыть";
 "Open Recent" = "Открыть недавние";
@@ -225,6 +232,8 @@
 "Password" = "Пароль";
 "Password:" = "Пароль:";
 "Paste" = "Вставить";
+"Privacy" = "Конфиденциальность";
+"Privacy…" = "Конфиденциальность…";
 "Quick Look" = "Быстрый просмотр";
 "Quit Anyway" = "Завершить";
 "Quit JustArc" = "Завершить JustArc";
@@ -234,6 +243,7 @@
 "RAR %@ — %@" = "RAR %@ — %@";
 "RAR archives can be created once RARLAB's tool is installed from Settings." = "Архивы RAR можно будет создавать после установки утилиты RARLAB в настройках.";
 "RAR reads the “?” and “*” in “%@” as wildcards, and would have changed other items along with it. Nothing was changed." = "RAR воспринимает «?» и «*» в имени «%@» как шаблон и изменил бы вместе с ним другие объекты. Ничего не изменено.";
+"RAR's tools are made by RARLAB and are trial software under RARLAB's own licence, which JustArc does not grant: RARLAB asks for a licence to be bought to keep using them. The licence comes with the download, and RARLAB's website has the details." = "Инструменты RAR создаёт RARLAB, и это пробная версия по собственной лицензии RARLAB, которую JustArc не предоставляет: чтобы продолжать ими пользоваться, RARLAB просит купить лицензию. Текст лицензии входит в загрузку, подробности — на сайте RARLAB.";
 "RARLAB does not publish a build for this processor." = "RARLAB не выпускает сборку для этого процессора.";
 "Read Licence" = "Прочитать лицензию";
 "Reading RAR always works. Writing needs RARLAB's own tool, which JustArc cannot include. The download comes from rarlab.com and is a trial version licensed by RARLAB, not by JustArc. It is checked against a published checksum before it is installed, in Application Support, not inside the app." = "Чтение RAR работает всегда. Для записи нужна утилита самой RARLAB, которую JustArc включать не вправе. Она загружается с rarlab.com и является пробной версией по лицензии RARLAB, а не JustArc. Перед установкой загрузка сверяется с опубликованной контрольной суммой; утилита устанавливается в Application Support, а не внутрь приложения.";
@@ -361,6 +371,7 @@
 "Update %@ with the edited files?" = "Обновить %@ изменёнными файлами?";
 "Update Archive" = "Обновить архив";
 "Update RAR…" = "Обновить RAR…";
+"Updates:" = "Обновления:";
 "Updating %@" = "Обновление %@";
 "Use" = "Использовать";
 "Use JustArc for All Archives" = "Открывать все архивы в JustArc";
@@ -368,6 +379,7 @@
 "Used only when a password is set. macOS's own Archive Utility cannot open AES zips; ZipCrypto can be broken." = "Используется, только если задан пароль. Системная «Утилита архивирования» не открывает ZIP с AES, а ZipCrypto можно взломать.";
 "View" = "Вид";
 "Virtual Disk" = "Виртуальный диск";
+"Visit RARLAB" = "Сайт RARLAB";
 "Volumes: %d" = "Томов: %d";
 "Western (DOS 437)" = "Западноевропейская (DOS 437)";
 "Western (Windows 1252)" = "Западноевропейская (Windows 1252)";

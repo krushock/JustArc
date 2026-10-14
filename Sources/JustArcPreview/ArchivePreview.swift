@@ -48,7 +48,7 @@ public struct ArchivePreview: Sendable {
             // Nothing here will be extracted, so what was unwrapped to list a
             // compressed tar is given back at once.
             engine.release(archive: url)
-            Diagnostics.log("preview: \(url.lastPathComponent) lists \(listing.entries.count) entries")
+            Diagnostics.log("preview: \(url.lastPathComponent) lists \(public: listing.entries.count) entries")
             return preview(.listing(listing), named: listing.info.formatName.uppercased())
         } catch let error as ArchiveError where error.isPasswordProblem {
             return preview(.locked)

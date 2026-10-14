@@ -23,7 +23,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Compression by 7-Zip, used under the GNU LGPL.</string>
+	<string>Compression by 7-Zip, used under the GNU LGPL. Updates by Sparkle, under the MIT licence.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
@@ -31,8 +31,9 @@
 
 	<key>SUFeedURL</key>
 	<string>https://justarc.app/appcast.xml</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
+	<!-- SUEnableAutomaticChecks is left out on purpose: Sparkle then asks, on the
+	     second launch, whether to check for updates, and nothing is sent before the
+	     answer is yes. Settings ▸ General changes the answer later. -->
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<!-- SUPublicEDKey is generated per developer with Sparkle's generate_keys and must

@@ -26,8 +26,19 @@ final class UpdateController: NSObject {
 
     var isAvailable: Bool { updaterController != nil }
 
+    /// The one the app made, for Settings to reach.
+    static private(set) weak var shared: UpdateController?
+
+    /// Whether JustArc looks for a newer version once a day by itself. Off until the
+    /// user says yes, to Sparkle's question or in Settings.
+    var checksAutomatically: Bool {
+        get { updaterController?.updater.automaticallyChecksForUpdates ?? false }
+        set { updaterController?.updater.automaticallyChecksForUpdates = newValue }
+    }
+
     override init() {
         super.init()
+        Self.shared = self
         guard let feed = Self.feedURL else {
             Diagnostics.log("updates: no SUFeedURL in the bundle, updater not started")
             return
@@ -35,8 +46,7 @@ final class UpdateController: NSObject {
         updaterController = SPUStandardUpdaterController(startingUpdater: true,
                                                          updaterDelegate: nil,
                                                          userDriverDelegate: nil)
-        Diagnostics.log("updates: feed \(feed.absoluteString), "
-                        + "signing key \(Self.hasUpdateSigningKey ? "present" : "missing")")
+        Diagnostics.log("updates: feed \(public: feed.absoluteString), signing key \(public: Self.hasUpdateSigningKey ? "present" : "missing")")
     }
 
     @objc func checkForUpdates(_ sender: Any?) {

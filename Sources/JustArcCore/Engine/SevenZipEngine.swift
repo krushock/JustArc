@@ -34,7 +34,7 @@ public struct SevenZipEngine: ArchiveEngine, VerbatimExtractor {
             }
             let tooDeep = all.lazy.filter { ArchivePath.isTooDeep($0.path) }.count
             if tooDeep > 0 {
-                Diagnostics.log("\(archive.lastPathComponent): \(tooDeep) item(s) nested more than \(ArchivePath.maximumDepth) folders deep are not listed")
+                Diagnostics.log("\(archive.lastPathComponent): \(public: tooDeep) item(s) nested more than \(public: ArchivePath.maximumDepth) folders deep are not listed")
             }
             return ArchiveListing(info: info, entries: entries)
         }
@@ -175,7 +175,7 @@ public struct SevenZipEngine: ArchiveEngine, VerbatimExtractor {
                 keepLinksAsStored: keepLinksAsStored,
                 progress: readable.didUnwrap ? whole.slice(offset: 0.5, span: 0.5) : whole)
             if summary.linksRefused > 0 {
-                Diagnostics.log("Skipped \(summary.linksRefused) link(s) pointing outside \(destination.path)")
+                Diagnostics.log("Skipped \(public: summary.linksRefused) link(s) pointing outside \(destination.path)")
             }
         }
         // A cancel that arrives after the last file is written is too late to be one:

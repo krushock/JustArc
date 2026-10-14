@@ -78,3 +78,31 @@ final class ServicesMenuTests: XCTestCase {
         pasteboard.releaseGlobally()
     }
 }
+
+/// What JustArc tells people about what it sends, and asks before sending.
+@MainActor
+final class PrivacyTests: XCTestCase {
+    override func setUp() async throws {
+        _ = NSApplication.shared
+    }
+
+    func testUpdatesAreNotCheckedForBeforeTheUserSaysSo() throws {
+        let plistURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/JustArc/Resources/Info.plist")
+        let plist = try XCTUnwrap(try PropertyListSerialization.propertyList(
+            from: Data(contentsOf: plistURL), format: nil) as? [String: Any])
+        // Present, it would skip Sparkle's question and check from the first launch.
+        XCTAssertNil(plist["SUEnableAutomaticChecks"])
+        XCTAssertNil(plist["SUEnableSystemProfiling"])
+        XCTAssertTrue((plist["NSHumanReadableCopyright"] as? String)?.contains("Sparkle") == true)
+    }
+
+    func testTheHelpMenuHasPrivacyAndAcknowledgements() throws {
+        let menu = MainMenuBuilder.build(recentMenu: NSMenu())
+        let help = try XCTUnwrap(menu.items.last?.submenu)
+        let actions = help.items.compactMap(\.action)
+        XCTAssertTrue(actions.contains(#selector(AppDelegate.showPrivacy(_:))))
+        XCTAssertTrue(actions.contains(#selector(AppDelegate.showAcknowledgements(_:))))
+    }
+}

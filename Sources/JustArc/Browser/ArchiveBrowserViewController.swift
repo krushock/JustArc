@@ -428,8 +428,7 @@ final class ArchiveBrowserViewController: NSViewController, NSMenuItemValidation
         listSource.reload(tree: session.tree, path: currentPath, filter: filterText)
         table.reloadData()
         expandSingleRootFolder()
-        Diagnostics.log("list: \(session.visibleEntries.count) entries, "
-                        + "\(table.numberOfRows) rows at \"\(currentPath)\"")
+        Diagnostics.log("list: \(public: session.visibleEntries.count) entries, \(public: table.numberOfRows) rows at \"\(currentPath)\"")
         updateEmptyState()
         refreshChrome()
     }

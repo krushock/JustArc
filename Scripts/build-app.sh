@@ -57,6 +57,8 @@ cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Frameworks"
 cp "$ROOT/Vendor/7z.so" "$APP/Contents/Frameworks/7z.so"
 cp "$ROOT/Vendor/7zz-License.txt" "$APP/Contents/Resources/7-Zip-License.txt"
+# Sparkle is MIT licensed, which asks that its notice go wherever it goes.
+cp "$ROOT/.build/artifacts/sparkle/Sparkle/LICENSE" "$APP/Contents/Resources/Sparkle-License.txt"
 cp "$ROOT/Sources/JustArc/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # Localizations. Each .lproj folder is copied as-is next to the other resources.

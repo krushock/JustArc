@@ -31,7 +31,7 @@ final class SettingsTests: XCTestCase {
     func testSettingsWindowBuildsEveryPane() throws {
         let controller = PreferencesWindowController()
         let tabs = try XCTUnwrap(controller.window?.contentViewController as? NSTabViewController)
-        XCTAssertEqual(tabs.tabViewItems.count, 4)
+        XCTAssertEqual(tabs.tabViewItems.count, 5)
 
         for (index, item) in tabs.tabViewItems.enumerated() {
             tabs.selectedTabViewItemIndex = index

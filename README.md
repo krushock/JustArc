@@ -186,6 +186,10 @@ JUSTARC_VERBOSE=1 ./build/JustArc.app/Contents/MacOS/JustArc ~/Downloads/thing.d
 ```
 
 Engine logging also goes to the unified log under the `com.justarc.JustArc` subsystem.
+There, file names, paths and error texts read `<private>`: the log is kept for days
+and goes into every sysdiagnose. Counts, exit codes and the like are logged as they
+are, by writing them as `\(public: value)` in a `Diagnostics.log` message. For the
+whole of every line, use `JUSTARC_VERBOSE=1`.
 
 After changing any message shown to a person, regenerate the translation files:
 
@@ -240,6 +244,13 @@ Archives are untrusted input, and the destination is the user's own data.
 
 Each of these has a test built from an archive made to break it, in
 `ExtractionSafetyTests` and `ReviewRegressionTests`.
+
+## Privacy
+
+JustArc collects nothing. It goes online only to check for updates, once a day and
+only once the user has said yes, and to download RAR's tools when asked to.
+[PRIVACY.md](PRIVACY.md) has the details and is the text for the website; the app
+shows the same under Help ▸ Privacy.
 
 ## Known gaps
 
