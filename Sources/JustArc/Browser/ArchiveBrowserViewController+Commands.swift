@@ -707,6 +707,14 @@ extension ArchiveBrowserViewController {
             completion?(false)
             return
         }
+        // The save panel hands over the one file named in it. A split archive's
+        // other volumes go beside it, which takes the folder.
+        if options.volumeSize?.isEmpty == false,
+           !FolderAccess.shared.ensure(url.deletingLastPathComponent(),
+                                       reason: L("JustArc needs your permission to save the volumes of a split archive in this folder.")) {
+            completion?(false)
+            return
+        }
         // Busy from now, and no longer by the time the caller hears how it went:
         // what it does next may be to close the window.
         beginOperation()

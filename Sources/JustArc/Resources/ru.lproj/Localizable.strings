@@ -5,6 +5,7 @@
 " — Edited" = " — изменён";
 " — packed %@" = " — упаковано %@";
 "%@ (replaced)" = "%@ (заменено)";
+"%@ To allow it, choose Allow. Choosing a folder that contains “%@”, such as your home folder, covers every folder inside it, and JustArc will not ask again." = "%@ Чтобы разрешить, нажмите «Разрешить». Если выбрать папку, в которой находится «%@», например вашу домашнюю, разрешение распространится на все папки внутри неё, и JustArc больше не будет спрашивать.";
 "%@ already exists in the archive." = "«%@» уже есть в архиве.";
 "%@ could not be created. %@" = "Не удалось создать %@. %@";
 "%@ could not be extracted." = "Не удалось извлечь %@.";
@@ -53,7 +54,9 @@
 "Add" = "Добавить";
 "Add Files" = "Добавить файлы";
 "Add Files…" = "Добавить файлы…";
+"Add Folder…" = "Добавить папку…";
 "Adding to %@" = "Добавление в %@";
+"Allow" = "Разрешить";
 "Always do this" = "Всегда поступать так";
 "Archive" = "Архив";
 "Archive Information" = "Сведения об архиве";
@@ -76,6 +79,7 @@
 "Check the password for %@ and try again." = "Проверьте пароль для %@ и попробуйте снова.";
 "Checking…" = "Проверка…";
 "Choose" = "Выбрать";
+"Choose a folder JustArc may save in. Every folder inside it is included." = "Выберите папку, в которой JustArc может сохранять файлы. Все папки внутри неё тоже будут доступны.";
 "Choose a name and format for the archive." = "Выберите имя и формат архива.";
 "Choose another name, or delete the other item first." = "Выберите другое имя или сначала удалите другой объект.";
 "Choose files or folders to add to %@ in %@." = "Выберите файлы или папки, чтобы добавить их в папку «%@» архива %@.";
@@ -156,6 +160,7 @@
 "Filter the list" = "Отфильтровать список";
 "Find…" = "Найти…";
 "Folder" = "Папка";
+"Folders:" = "Папки:";
 "Folders: %@" = "Папок: %@";
 "Format:" = "Формат:";
 "Format: %@" = "Формат: %@";
@@ -189,6 +194,12 @@
 "JustArc is missing its archive engine." = "Отсутствует архивный движок JustArc.";
 "JustArc is running outside an app bundle, so it cannot be chosen here." = "JustArc запущен не из пакета приложения, поэтому выбрать его здесь нельзя.";
 "JustArc is still working. Quit anyway?" = "JustArc ещё работает. Всё равно завершить?";
+"JustArc may save in these folders and every folder inside them. It asks before saving anywhere else, and adds what you allow here." = "JustArc может сохранять файлы в этих папках и во всех папках внутри них. Прежде чем сохранить где-то ещё, он спросит и добавит сюда то, что вы разрешите.";
+"JustArc needs your permission to extract archives into this folder." = "JustArc нужно ваше разрешение, чтобы распаковывать архивы в эту папку.";
+"JustArc needs your permission to save the archive in this folder." = "JustArc нужно ваше разрешение, чтобы сохранить архив в этой папке.";
+"JustArc needs your permission to save the volumes of a split archive in this folder." = "JustArc нужно ваше разрешение, чтобы сохранить тома многотомного архива в этой папке.";
+"JustArc needs your permission to use the folder that holds the archive." = "JustArc нужно ваше разрешение на доступ к папке, в которой лежит архив.";
+"JustArc still cannot save there. Choose the folder itself or one that contains it." = "JustArc по-прежнему не может туда сохранять. Выберите саму эту папку или ту, в которой она находится.";
 "JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac." = "JustArc работает на вашем Mac. Он не собирает, не хранит и не отправляет ничего о вас или ваших файлах, и в нём нет аналитики или слежки.\n\nВ интернет он обращается только:\n• чтобы раз в день узнать на justarc.app, нет ли новой версии, если вы это разрешили. Запрос содержит название и версию JustArc и, как любой запрос, ваш IP-адрес;\n• когда вы просите загрузить инструменты RAR — с rarlab.com, сверяя их с записью на formulae.brew.sh.\n\nПароли, которые вы решили запомнить, хранятся в вашей связке ключей входа на этом Mac.";
 "JustArc works on your Mac. It does not collect, store or send anything about you or your files, contains no analytics or tracking, and never connects to the internet. Updates come through the App Store.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac." = "JustArc работает на вашем Mac. Он не собирает, не хранит и не отправляет ничего о вас или ваших файлах, в нём нет аналитики или слежки, и он никогда не обращается к интернету. Обновления приходят через App Store.\n\nПароли, которые вы решили запомнить, хранятся в вашей связке ключей входа на этом Mac.";
 "Keep Both" = "Оставить оба";
@@ -213,6 +224,7 @@
 "No errors found." = "Ошибок не найдено.";
 "None" = "Нет";
 "None of the selected files is an archive JustArc can read." = "Среди выбранных файлов нет архива, который JustArc умеет читать.";
+"None yet" = "Пока нет";
 "Normal" = "Обычное";
 "Not installed — RAR archives are read-only." = "Не установлено — архивы RAR доступны только для чтения.";
 "Nothing in %@ could be read. The image mounted but appeared empty." = "Не удалось прочитать содержимое %@. Образ смонтирован, но оказался пустым.";
@@ -257,6 +269,7 @@
 "Reload" = "Обновить";
 "Remember" = "Запомнить";
 "Remove" = "Удалить";
+"Remove %@" = "Удалить %@";
 "Rename" = "Переименовать";
 "Rename %@" = "Переименовать %@";
 "Rename…" = "Переименовать…";
@@ -428,3 +441,4 @@
 "“%@” cannot be used as a name." = "Имя «%@» использовать нельзя.";
 "“%@” differs from too many other names only in capitalisation for the archive to be rewritten on this Mac's disk." = "«%@» отличается только регистром букв от слишком многих других имён, чтобы архив можно было переписать на диске этого Mac.";
 "“%@” is a name macOS keeps for its own bookkeeping, and files with it are not shown. Choose another name." = "Имя «%@» macOS использует для служебных данных, и файлы с таким именем не отображаются. Выберите другое имя.";
+"“%@” is not inside the folder you chose." = "«%@» не находится внутри выбранной папки.";

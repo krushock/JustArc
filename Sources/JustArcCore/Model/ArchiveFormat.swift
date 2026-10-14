@@ -118,6 +118,13 @@ public enum FormatRegistry {
         return best?.0
     }
 
+    /// Whether a file is named like one volume of a set: "a.7z.001", "a.part2.rar",
+    /// "a.r00". Its other volumes are beside it, in the same folder.
+    public static func isVolumeName(_ url: URL) -> Bool {
+        url.lastPathComponent.range(of: #"(\.\d{3}|\.part\d+\.rar|\.r\d{2})$"#,
+                                    options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     public static func isArchive(_ url: URL) -> Bool {
         format(for: url) != nil
     }

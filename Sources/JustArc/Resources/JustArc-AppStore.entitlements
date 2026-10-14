@@ -8,5 +8,12 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<!-- Downloads is one of the places Settings offers to extract to, and where
+	     most archives arrive. Everywhere else is granted by the user, once, and
+	     remembered: see FolderAccess. -->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
 </dict>
 </plist>

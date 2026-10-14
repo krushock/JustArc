@@ -113,10 +113,65 @@ final class GeneralSettingsViewController: SettingsPaneViewController {
         } else {
             rows.append([caption(L("Privacy:")), privacy])
         }
+        // The sandboxed edition writes only where it has been allowed to.
+        if Distribution.isSandboxed {
+            folderList.orientation = .vertical
+            folderList.alignment = .leading
+            folderList.spacing = 4
+            let add = NSButton(title: L("Add Folder…"), target: self, action: #selector(addFolder))
+            add.bezelStyle = .rounded
+            rows.append([caption(L("Folders:")), folderList])
+            rows.append([NSGridCell.emptyContentView, add])
+            rows.append([NSGridCell.emptyContentView, note(L("JustArc may save in these folders and every folder inside them. It asks before saving anywhere else, and adds what you allow here."))])
+        }
         install(NSGridView(views: rows))
     }
 
+    private let folderList = NSStackView()
+
+    private func showFolders() {
+        folderList.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let folders = FolderAccess.shared.grantedFolders
+        if folders.isEmpty {
+            let none = NSTextField(labelWithString: L("None yet"))
+            none.textColor = .secondaryLabelColor
+            folderList.addArrangedSubview(none)
+        }
+        for folder in folders {
+            let name = NSTextField(labelWithString: folder.path)
+            name.lineBreakMode = .byTruncatingMiddle
+            name.toolTip = folder.path
+            name.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
+            let remove = NSButton(title: L("Remove"), target: self, action: #selector(removeFolder(_:)))
+            remove.bezelStyle = .rounded
+            remove.controlSize = .small
+            remove.identifier = NSUserInterfaceItemIdentifier(folder.path)
+            remove.setAccessibilityLabel(L("Remove %@", folder.lastPathComponent))
+            let row = NSStackView(views: [name, remove])
+            row.spacing = 8
+            folderList.addArrangedSubview(row)
+        }
+    }
+
+    @objc private func addFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = L("Allow")
+        panel.message = L("Choose a folder JustArc may save in. Every folder inside it is included.")
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        FolderAccess.shared.grant(folder)
+        showFolders()
+    }
+
+    @objc private func removeFolder(_ sender: NSButton) {
+        guard let path = sender.identifier?.rawValue else { return }
+        FolderAccess.shared.revoke(URL(fileURLWithPath: path))
+        showFolders()
+    }
+
     override func viewWillAppear() {
+        if Distribution.isSandboxed { showFolders() }
         let updates = UpdateController.shared
         updatesBox.isEnabled = updates?.isAvailable == true
         updatesBox.state = updates?.checksAutomatically == true ? .on : .off

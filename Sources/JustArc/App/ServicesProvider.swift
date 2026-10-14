@@ -104,6 +104,7 @@ final class ServicesProvider: NSObject {
         }
 
         let parent = items[0].deletingLastPathComponent()
+        guard FolderAccess.shared.ensure(parent, reason: L("JustArc needs your permission to save the archive in this folder.")) else { return }
         let stem = items.count == 1
             ? (items[0].lastPathComponent as NSString).deletingPathExtension
             : parent.lastPathComponent

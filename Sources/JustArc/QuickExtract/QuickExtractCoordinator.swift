@@ -36,6 +36,15 @@ final class QuickExtractCoordinator {
     private func process(_ archive: URL) async {
         guard let parent = resolveDestinationParent(for: archive) else { return }
 
+        // In the App Store edition, the folder written to has to have been granted.
+        // So does the archive's own folder when it is needed: for the other volumes
+        // of a split archive, and to move the archive to the Trash afterwards.
+        guard FolderAccess.shared.ensure(parent, reason: L("JustArc needs your permission to extract archives into this folder.")) else { return }
+        if FormatRegistry.isVolumeName(archive) || Preferences.moveArchiveToTrash {
+            FolderAccess.shared.ensure(archive.deletingLastPathComponent(),
+                                       reason: L("JustArc needs your permission to use the folder that holds the archive."))
+        }
+
         // Disk images go through hdiutil, everything else through 7-Zip.
         let engine = EngineFactory.engine(for: archive)
         defer {

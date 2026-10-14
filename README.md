@@ -261,13 +261,18 @@ downloading and running RARLAB's tool. RAR is still read. What differs is decide
 in one place, `Sources/JustArcCore/Support/Distribution.swift`, which also switches
 the same things off in any build that finds itself sandboxed.
 
+A sandboxed app may write only where the user has pointed it. Extracting beside an
+archive, a split archive's other volumes and what Quick Compress makes all go into
+folders nobody picked in a panel, so the App Store edition asks for such a folder
+once, with an open panel, and keeps the answer as a security-scoped bookmark: a
+folder granted covers every folder inside it, and granting the home folder ends the
+questions for good. Settings ▸ General lists the granted folders, to add or remove
+them. Downloads needs no asking. Archives opened before are reopened from Open Recent
+the same way. All of this is in `Sources/JustArc/App/FolderAccess.swift`, and does
+nothing in the website edition.
+
 Not done yet:
 
-- **Folder access.** A sandboxed app may write only where the user has pointed it.
-  Extracting next to the archive, Quick Extract and the Compress service all write
-  beside files the user never chose a folder for, so the App Store edition still
-  needs to ask for that folder once, with an open panel, and remember the answer as a
-  security-scoped bookmark.
 - **Signing for submission.** The script signs ad hoc. A build for App Store Connect
   is signed with an Apple Distribution identity, carries a provisioning profile and
   is packaged with `productbuild`; that needs a paid developer account's

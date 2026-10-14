@@ -5,6 +5,7 @@
 " — Edited" = " — Edited";
 " — packed %@" = " — packed %@";
 "%@ (replaced)" = "%@ (replaced)";
+"%@ To allow it, choose Allow. Choosing a folder that contains “%@”, such as your home folder, covers every folder inside it, and JustArc will not ask again." = "%@ To allow it, choose Allow. Choosing a folder that contains “%@”, such as your home folder, covers every folder inside it, and JustArc will not ask again.";
 "%@ already exists in the archive." = "%@ already exists in the archive.";
 "%@ could not be created. %@" = "%@ could not be created. %@";
 "%@ could not be extracted." = "%@ could not be extracted.";
@@ -53,7 +54,9 @@
 "Add" = "Add";
 "Add Files" = "Add Files";
 "Add Files…" = "Add Files…";
+"Add Folder…" = "Add Folder…";
 "Adding to %@" = "Adding to %@";
+"Allow" = "Allow";
 "Always do this" = "Always do this";
 "Archive" = "Archive";
 "Archive Information" = "Archive Information";
@@ -76,6 +79,7 @@
 "Check the password for %@ and try again." = "Check the password for %@ and try again.";
 "Checking…" = "Checking…";
 "Choose" = "Choose";
+"Choose a folder JustArc may save in. Every folder inside it is included." = "Choose a folder JustArc may save in. Every folder inside it is included.";
 "Choose a name and format for the archive." = "Choose a name and format for the archive.";
 "Choose another name, or delete the other item first." = "Choose another name, or delete the other item first.";
 "Choose files or folders to add to %@ in %@." = "Choose files or folders to add to %@ in %@.";
@@ -156,6 +160,7 @@
 "Filter the list" = "Filter the list";
 "Find…" = "Find…";
 "Folder" = "Folder";
+"Folders:" = "Folders:";
 "Folders: %@" = "Folders: %@";
 "Format:" = "Format:";
 "Format: %@" = "Format: %@";
@@ -189,6 +194,12 @@
 "JustArc is missing its archive engine." = "JustArc is missing its archive engine.";
 "JustArc is running outside an app bundle, so it cannot be chosen here." = "JustArc is running outside an app bundle, so it cannot be chosen here.";
 "JustArc is still working. Quit anyway?" = "JustArc is still working. Quit anyway?";
+"JustArc may save in these folders and every folder inside them. It asks before saving anywhere else, and adds what you allow here." = "JustArc may save in these folders and every folder inside them. It asks before saving anywhere else, and adds what you allow here.";
+"JustArc needs your permission to extract archives into this folder." = "JustArc needs your permission to extract archives into this folder.";
+"JustArc needs your permission to save the archive in this folder." = "JustArc needs your permission to save the archive in this folder.";
+"JustArc needs your permission to save the volumes of a split archive in this folder." = "JustArc needs your permission to save the volumes of a split archive in this folder.";
+"JustArc needs your permission to use the folder that holds the archive." = "JustArc needs your permission to use the folder that holds the archive.";
+"JustArc still cannot save there. Choose the folder itself or one that contains it." = "JustArc still cannot save there. Choose the folder itself or one that contains it.";
 "JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac." = "JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac.";
 "JustArc works on your Mac. It does not collect, store or send anything about you or your files, contains no analytics or tracking, and never connects to the internet. Updates come through the App Store.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac." = "JustArc works on your Mac. It does not collect, store or send anything about you or your files, contains no analytics or tracking, and never connects to the internet. Updates come through the App Store.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac.";
 "Keep Both" = "Keep Both";
@@ -213,6 +224,7 @@
 "No errors found." = "No errors found.";
 "None" = "None";
 "None of the selected files is an archive JustArc can read." = "None of the selected files is an archive JustArc can read.";
+"None yet" = "None yet";
 "Normal" = "Normal";
 "Not installed — RAR archives are read-only." = "Not installed — RAR archives are read-only.";
 "Nothing in %@ could be read. The image mounted but appeared empty." = "Nothing in %@ could be read. The image mounted but appeared empty.";
@@ -257,6 +269,7 @@
 "Reload" = "Reload";
 "Remember" = "Remember";
 "Remove" = "Remove";
+"Remove %@" = "Remove %@";
 "Rename" = "Rename";
 "Rename %@" = "Rename %@";
 "Rename…" = "Rename…";
@@ -428,3 +441,4 @@
 "“%@” cannot be used as a name." = "“%@” cannot be used as a name.";
 "“%@” differs from too many other names only in capitalisation for the archive to be rewritten on this Mac's disk." = "“%@” differs from too many other names only in capitalisation for the archive to be rewritten on this Mac's disk.";
 "“%@” is a name macOS keeps for its own bookkeeping, and files with it are not shown. Choose another name." = "“%@” is a name macOS keeps for its own bookkeeping, and files with it are not shown. Choose another name.";
+"“%@” is not inside the folder you chose." = "“%@” is not inside the folder you chose.";

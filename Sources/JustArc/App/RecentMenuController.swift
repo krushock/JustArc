@@ -6,6 +6,8 @@ import JustArcCore
 enum RecentsRecorder {
     static func note(_ url: URL) {
         RecentArchives.shared.note(url)
+        // In the App Store edition, kept so that Open Recent can open it again later.
+        FolderAccess.shared.remember(file: url)
         // This is what puts the archive in the system's Recent Items as well.
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
     }
@@ -79,6 +81,7 @@ final class RecentMenuController: NSObject, NSMenuDelegate {
             NSSound.beep()
             return
         }
+        FolderAccess.shared.reopen(url)
         open?(url)
     }
 
