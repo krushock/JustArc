@@ -43,6 +43,7 @@
 "4480 MB (DVD)" = "4480 MB (DVD)";
 "7-Zip cannot write this format." = "7-Zip cannot write this format.";
 "700 MB (CD)" = "700 MB (CD)";
+"A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licence in full." = "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licence in full.";
 "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full." = "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.";
 "A folder named “%@” already exists in “%@”." = "A folder named “%@” already exists in “%@”.";
 "A name cannot contain a slash." = "A name cannot contain a slash.";
@@ -189,6 +190,7 @@
 "JustArc is running outside an app bundle, so it cannot be chosen here." = "JustArc is running outside an app bundle, so it cannot be chosen here.";
 "JustArc is still working. Quit anyway?" = "JustArc is still working. Quit anyway?";
 "JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac." = "JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac.";
+"JustArc works on your Mac. It does not collect, store or send anything about you or your files, contains no analytics or tracking, and never connects to the internet. Updates come through the App Store.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac." = "JustArc works on your Mac. It does not collect, store or send anything about you or your files, contains no analytics or tracking, and never connects to the internet. Updates come through the App Store.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac.";
 "Keep Both" = "Keep Both";
 "Keep Unchanged" = "Keep Unchanged";
 "Keep both" = "Keep both";
@@ -233,6 +235,7 @@
 "Password:" = "Password:";
 "Paste" = "Paste";
 "Privacy" = "Privacy";
+"Privacy:" = "Privacy:";
 "Privacy…" = "Privacy…";
 "Quick Look" = "Quick Look";
 "Quit Anyway" = "Quit Anyway";

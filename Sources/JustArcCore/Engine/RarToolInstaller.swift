@@ -1,3 +1,6 @@
+#if !APP_STORE
+// Not in the App Store build: the store does not take apps that download and run
+// programs. See `Distribution`.
 import CryptoKit
 import Foundation
 
@@ -300,3 +303,4 @@ public enum RarToolInstaller {
         try data.write(to: destination, options: .atomic)
     }
 }
+#endif

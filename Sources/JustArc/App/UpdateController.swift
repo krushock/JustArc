@@ -1,6 +1,8 @@
 import AppKit
-import Sparkle
 import JustArcCore
+#if !APP_STORE
+import Sparkle
+#endif
 
 /// Wraps Sparkle so the rest of the app does not need to know about it.
 ///
@@ -9,7 +11,12 @@ import JustArcCore
 /// showing a command that always fails.
 @MainActor
 final class UpdateController: NSObject {
+    #if !APP_STORE
     private var updaterController: SPUStandardUpdaterController?
+    #else
+    // The App Store build has no updater: the store updates it.
+    private let updaterController: NoUpdater? = nil
+    #endif
 
     static var feedURL: URL? {
         guard let raw = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
@@ -39,6 +46,11 @@ final class UpdateController: NSObject {
     override init() {
         super.init()
         Self.shared = self
+        #if !APP_STORE
+        guard Distribution.updatesItself else {
+            Diagnostics.log("updates: left to the App Store, updater not started")
+            return
+        }
         guard let feed = Self.feedURL else {
             Diagnostics.log("updates: no SUFeedURL in the bundle, updater not started")
             return
@@ -47,6 +59,7 @@ final class UpdateController: NSObject {
                                                          updaterDelegate: nil,
                                                          userDriverDelegate: nil)
         Diagnostics.log("updates: feed \(public: feed.absoluteString), signing key \(public: Self.hasUpdateSigningKey ? "present" : "missing")")
+        #endif
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
@@ -60,3 +73,13 @@ final class UpdateController: NSObject {
         return isAvailable
     }
 }
+
+#if APP_STORE
+/// Stands in for Sparkle's controller in the App Store build, so the code above
+/// reads the same in both.
+private final class NoUpdater {
+    final class Updater { var automaticallyChecksForUpdates = false }
+    let updater = Updater()
+    func checkForUpdates(_ sender: Any?) {}
+}
+#endif

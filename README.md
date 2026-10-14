@@ -245,6 +245,34 @@ Archives are untrusted input, and the destination is the user's own data.
 Each of these has a test built from an archive made to break it, in
 `ExtractionSafetyTests` and `ReviewRegressionTests`.
 
+## App Store edition
+
+The same code builds a second edition for the Mac App Store:
+
+```bash
+./Scripts/build-app.sh release --app-store
+```
+
+It goes to `build/AppStore/JustArc.app`, compiled with `APP_STORE` defined. It runs
+in the App Sandbox, has no network access, carries no updater (the store updates it)
+and leaves out two things the sandbox or the store's rules rule out: opening disk
+images, which means mounting them with hdiutil, and writing RAR, which means
+downloading and running RARLAB's tool. RAR is still read. What differs is decided
+in one place, `Sources/JustArcCore/Support/Distribution.swift`, which also switches
+the same things off in any build that finds itself sandboxed.
+
+Not done yet:
+
+- **Folder access.** A sandboxed app may write only where the user has pointed it.
+  Extracting next to the archive, Quick Extract and the Compress service all write
+  beside files the user never chose a folder for, so the App Store edition still
+  needs to ask for that folder once, with an open panel, and remember the answer as a
+  security-scoped bookmark.
+- **Signing for submission.** The script signs ad hoc. A build for App Store Connect
+  is signed with an Apple Distribution identity, carries a provisioning profile and
+  is packaged with `productbuild`; that needs a paid developer account's
+  certificates, which this machine does not have.
+
 ## Privacy
 
 JustArc collects nothing. It goes online only to check for updates, once a day and

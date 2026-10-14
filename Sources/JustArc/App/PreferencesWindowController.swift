@@ -13,13 +13,17 @@ final class PreferencesWindowController: NSWindowController {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
 
-        let panes: [(NSViewController, String, String)] = [
+        var panes: [(NSViewController, String, String)] = [
             (GeneralSettingsViewController(), L("General"), "gearshape"),
             (ExtractionSettingsViewController(), L("Extracting"), "arrow.down.document"),
             (ArchiveSettingsViewController(), L("Archives"), "shippingbox"),
             (FileTypesSettingsViewController(), L("File Types"), "doc.badge.gearshape"),
-            (RarSettingsViewController(), L("RAR"), "arrow.down.circle"),
         ]
+        #if !APP_STORE
+        if Distribution.writesRAR {
+            panes.append((RarSettingsViewController(), L("RAR"), "arrow.down.circle"))
+        }
+        #endif
         for (controller, title, symbol) in panes {
             controller.title = title
             let item = NSTabViewItem(viewController: controller)
@@ -100,11 +104,16 @@ final class GeneralSettingsViewController: SettingsPaneViewController {
         updatesBox.action = #selector(valueChanged)
         let privacy = NSButton(title: L("Privacy…"), target: NSApp.delegate, action: #selector(AppDelegate.showPrivacy(_:)))
         privacy.bezelStyle = .rounded
-        install(NSGridView(views: [
-            [caption(L("Updates:")), updatesBox],
-            [NSGridCell.emptyContentView, note(L("Once a day JustArc asks justarc.app whether there is a newer version. The request carries the name and version of JustArc, and, as any request to a website does, your IP address. Nothing about your files is sent, and nothing else is collected."))],
-            [NSGridCell.emptyContentView, privacy],
-        ]))
+        var rows: [[NSView]] = []
+        // The App Store updates its own apps; that build has no updater to set.
+        if Distribution.updatesItself {
+            rows.append([caption(L("Updates:")), updatesBox])
+            rows.append([NSGridCell.emptyContentView, note(L("Once a day JustArc asks justarc.app whether there is a newer version. The request carries the name and version of JustArc, and, as any request to a website does, your IP address. Nothing about your files is sent, and nothing else is collected."))])
+            rows.append([NSGridCell.emptyContentView, privacy])
+        } else {
+            rows.append([caption(L("Privacy:")), privacy])
+        }
+        install(NSGridView(views: rows))
     }
 
     override func viewWillAppear() {
@@ -298,6 +307,8 @@ final class ArchiveSettingsViewController: SettingsPaneViewController {
 
 // MARK: - RAR
 
+#if !APP_STORE
+
 @MainActor
 final class RarSettingsViewController: SettingsPaneViewController {
     private let statusLabel = NSTextField(labelWithString: "")
@@ -481,3 +492,4 @@ final class RarSettingsViewController: SettingsPaneViewController {
         refresh()
     }
 }
+#endif

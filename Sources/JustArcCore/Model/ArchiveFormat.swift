@@ -45,7 +45,13 @@ public struct ArchiveFormat: Sendable, Hashable, Identifiable {
 }
 
 public enum FormatRegistry {
-    public static let all: [ArchiveFormat] = [
+    /// Every format this build can open. Disk images are left out where they cannot
+    /// be mounted; see `Distribution`.
+    public static let all: [ArchiveFormat] = everything.filter {
+        $0.engine != .diskImage || Distribution.mountsDiskImages
+    }
+
+    private static let everything: [ArchiveFormat] = [
         ArchiveFormat(key: "zip", displayName: "ZIP", extensions: ["zip", "jar", "ipa", "apk", "epub", "xpi", "war", "whl", "cbz"],
                       canWrite: true, canEditInPlace: true, supportsPassword: true,
                       supportsSplitVolumes: true),

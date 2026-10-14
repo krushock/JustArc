@@ -26,7 +26,12 @@ public struct AssociableFileType: Sendable, Hashable {
         detail ?? extensions.map { "." + $0 }.joined(separator: ", ")
     }
 
-    public static let all: [AssociableFileType] = [
+    /// The kinds this build can open; see `FormatRegistry.all`.
+    public static let all: [AssociableFileType] = everything.filter {
+        $0.extensions != ["dmg"] || Distribution.mountsDiskImages
+    }
+
+    private static let everything: [AssociableFileType] = [
         AssociableFileType("ZIP", ["zip"]),
         AssociableFileType("RAR", ["rar"]),
         AssociableFileType("7-Zip", ["7z"]),

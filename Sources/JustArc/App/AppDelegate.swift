@@ -373,6 +373,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showPrivacy(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = L("Privacy")
+        guard Distribution.updatesItself || Distribution.writesRAR else {
+            alert.informativeText = L("JustArc works on your Mac. It does not collect, store or send anything about you or your files, contains no analytics or tracking, and never connects to the internet. Updates come through the App Store.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac.")
+            alert.addButton(withTitle: L("OK"))
+            alert.runModal()
+            return
+        }
         alert.informativeText = L("JustArc works on your Mac. It does not collect, store or send anything about you or your files, and it contains no analytics or tracking.\n\nIt connects to the internet only:\n• to check justarc.app for a newer version, if you allowed that, once a day. The request carries the name and version of JustArc and, like any request, your IP address.\n• when you ask it to download RAR's tools, from rarlab.com, checking them against the record kept at formulae.brew.sh.\n\nPasswords you choose to remember are kept in your login keychain, on this Mac.")
         alert.addButton(withTitle: L("OK"))
         alert.runModal()
@@ -381,8 +387,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showAbout(_ sender: Any?) {
         // The standard panel already knows the app's name, icon and version; only the
         // credits are ours to supply.
+        let text = Distribution.updatesItself
+            ? L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.", SevenZipVersion.short)
+            : L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licence in full.", SevenZipVersion.short)
         let credits = NSAttributedString(
-            string: L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.", SevenZipVersion.short),
+            string: text,
             attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                 .foregroundColor: NSColor.labelColor,

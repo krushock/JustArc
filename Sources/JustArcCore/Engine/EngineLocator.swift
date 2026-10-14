@@ -58,6 +58,7 @@ public enum EngineLocator {
     /// RAR writing needs RARLAB's own tool, which cannot be redistributed with the app.
     /// It is found where the user pointed us, where JustArc installed it, or on PATH.
     public static var externalRAR: URL? {
+        guard Distribution.writesRAR else { return nil }
         var candidates: [URL] = []
         if let override = UserDefaults.standard.string(forKey: "RARToolPath"), !override.isEmpty {
             candidates.append(URL(fileURLWithPath: override))
