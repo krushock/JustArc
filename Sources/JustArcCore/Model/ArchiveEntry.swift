@@ -115,19 +115,24 @@ public struct ArchiveInfo: Sendable, Hashable {
     public var hasEncryptedHeader: Bool
     public var comment: String?
     public var volumeCount: Int?
+    /// The file names of the archive's other volumes, which sit in the same folder
+    /// as the one that was opened. Empty for an archive in one file.
+    public var otherVolumes: [String]
 
     public init(formatName: String = "",
                 physicalSize: UInt64 = 0,
                 isSolid: Bool = false,
                 hasEncryptedHeader: Bool = false,
                 comment: String? = nil,
-                volumeCount: Int? = nil) {
+                volumeCount: Int? = nil,
+                otherVolumes: [String] = []) {
         self.formatName = formatName
         self.physicalSize = physicalSize
         self.isSolid = isSolid
         self.hasEncryptedHeader = hasEncryptedHeader
         self.comment = comment
         self.volumeCount = volumeCount
+        self.otherVolumes = otherVolumes
     }
 }
 

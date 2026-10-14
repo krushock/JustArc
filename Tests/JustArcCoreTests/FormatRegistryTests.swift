@@ -14,6 +14,12 @@ final class FormatRegistryTests: XCTestCase {
         XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/site.tar.gz")), "site")
         XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/photos.zip")), "photos")
         XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/archive.7z")), "archive")
+        // A volume is named for its set.
+        XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/photos.7z.001")), "photos")
+        XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/photos.zip.002")), "photos")
+        XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/photos.part1.rar")), "photos")
+        XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/photos.part01.RAR")), "photos")
+        XCTAssertEqual(FormatRegistry.baseName(for: URL(fileURLWithPath: "/x/backup.001")), "backup")
     }
 
     func testWritableFormatsAreOfferedInOrder() {

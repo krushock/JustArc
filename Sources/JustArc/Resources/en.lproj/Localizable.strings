@@ -195,7 +195,7 @@
 "Merging adds the archive’s files to the folder that is already there. Replacing moves it to the Trash first." = "Merging adds the archive’s files to the folder that is already there. Replacing moves it to the Trash first.";
 "Minimize" = "Minimize";
 "Modified" = "Modified";
-"Move the archive to the Trash afterwards" = "Move the archive to the Trash afterwards";
+"Move the archive to the Trash after extracting" = "Move the archive to the Trash after extracting";
 "Name" = "Name";
 "New Archive" = "New Archive";
 "No" = "No";

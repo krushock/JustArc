@@ -47,7 +47,11 @@ final class BridgeArchive {
                            physicalSize: raw.physicalSize,
                            isSolid: raw.isSolid,
                            hasEncryptedHeader: raw.headersEncrypted,
-                           comment: raw.comment.map { String(cString: $0) })
+                           comment: raw.comment.map { String(cString: $0) },
+                           volumeCount: raw.otherVolumeCount > 0 ? Int(raw.otherVolumeCount) + 1 : nil,
+                           otherVolumes: (0..<raw.otherVolumeCount).compactMap { index in
+                               sz_archive_volume_name(handle, index).map { String(cString: $0) }
+                           })
     }
 
     var formatName: String {

@@ -94,7 +94,7 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
     private let destinationPopUp = NSPopUpButton()
     private let smartFolderBox = NSButton(checkboxWithTitle: L("Create a folder when the archive has loose files"), target: nil, action: nil)
     private let revealBox = NSButton(checkboxWithTitle: L("Reveal the result in Finder"), target: nil, action: nil)
-    private let trashBox = NSButton(checkboxWithTitle: L("Move the archive to the Trash afterwards"), target: nil, action: nil)
+    private let trashBox = NSButton(checkboxWithTitle: L("Move the archive to the Trash after extracting"), target: nil, action: nil)
     private let quitBox = NSButton(checkboxWithTitle: L("Quit after extracting"), target: nil, action: nil)
     private let openActionPopUp = NSPopUpButton()
     private let conflictPopUp = NSPopUpButton()

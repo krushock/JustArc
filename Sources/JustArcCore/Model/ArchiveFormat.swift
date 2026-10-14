@@ -133,7 +133,17 @@ public enum FormatRegistry {
 
     /// Strips every known archive suffix so "site.tar.gz" becomes "site".
     public static func baseName(for url: URL) -> String {
-        let name = url.lastPathComponent
+        var name = url.lastPathComponent
+        // One volume of a set is named for the whole set: "photos.part1.rar" and
+        // "photos.7z.001" are both "photos", not "photos.part1" and "photos.7z".
+        if let part = name.range(of: #"\.part\d+\.rar$"#, options: [.regularExpression, .caseInsensitive]),
+           part.lowerBound > name.startIndex {
+            return String(name[..<part.lowerBound])
+        }
+        if let number = name.range(of: #"\.\d{3}$"#, options: .regularExpression) {
+            let inner = String(name[..<number.lowerBound])
+            if format(for: URL(fileURLWithPath: "/" + inner)) != nil { name = inner }
+        }
         let lower = name.lowercased()
         var bestLength = 0
         for format in all {

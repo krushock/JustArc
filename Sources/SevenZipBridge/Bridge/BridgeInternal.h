@@ -88,6 +88,8 @@ struct SZArchive {
     /// The code page chosen for names, or negative when it was left to us.
     int32_t codePage = -1;
     int32_t fallbackCodePage = 437;
+    /// For an archive in several volumes, the names of all but the one opened.
+    std::vector<std::string> otherVolumes;
     // Storage behind the pointers handed out by sz_item.
     std::string itemPath;
     std::string itemMethod;

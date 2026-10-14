@@ -261,6 +261,8 @@ public:
     /// name: what a handler needs to find the archive's other volumes.
     std::string folder;
     UString name;
+    /// The other volumes the handler opened, by name, in the order it asked for them.
+    std::vector<std::string> openedVolumes;
 };
 
 Z7_COM7F_IMF(OpenCallback::SetTotal(const UInt64 *, const UInt64 *)) { return S_OK; }
@@ -290,6 +292,9 @@ Z7_COM7F_IMF(OpenCallback::GetStream(const wchar_t *volumeName, IInStream **inSt
     auto *streamSpec = new CInFileStream;
     CMyComPtr<IInStream> stream = streamSpec;
     if (!streamSpec->Open(path.c_str())) return S_FALSE;
+    if (std::find(openedVolumes.begin(), openedVolumes.end(), leaf) == openedVolumes.end()) {
+        openedVolumes.push_back(leaf);
+    }
     *inStream = stream.Detach();
     return S_OK;
 }
@@ -418,12 +423,16 @@ Attempt OpenStream(IInStream *stream, const std::vector<const Handler *> &candid
 
         if (stream->Seek(0, STREAM_SEEK_SET, nullptr) != S_OK) return Attempt::Failed;
         const UInt64 scanLimit = 1 << 23;
+        // A format that gives up may have looked for volumes first; what it found
+        // belongs to no archive.
+        const size_t volumesBefore = callbackSpec->openedVolumes.size();
         if (archive->Open(stream, &scanLimit, callback) == S_OK) {
             opened = archive;
             openedHandler = handler;
             return Attempt::Opened;
         }
         archive->Close();
+        callbackSpec->openedVolumes.resize(volumesBefore);
 
         // The right format was found but the password was missing or wrong; trying
         // other formats would only turn that into a misleading "not an archive".
@@ -527,6 +536,7 @@ extern "C" SZArchive *sz_open(const char *path, const SZOpenOptions *options, SZ
     opened->hasPassword = hasPassword;
     opened->defaultItemName = DefaultItemName(*handler, opened->path);
     opened->codePage = codePage;
+    opened->otherVolumes = callbackSpec->openedVolumes;
     if (options && options->fallbackCodePage > 0) opened->fallbackCodePage = options->fallbackCodePage;
 
     NCOM::CPropVariant prop;
@@ -828,6 +838,7 @@ extern "C" void sz_archive_info(SZArchive *archive, SZArchiveInfo *info) {
     info->formatName = archive->formatName.c_str();
     info->headersEncrypted = archive->headersEncrypted;
     info->comment = archive->hasComment ? archive->comment.c_str() : nullptr;
+    info->otherVolumeCount = (uint32_t)archive->otherVolumes.size();
 
     NCOM::CPropVariant size;
     UInt64 physical = 0;
@@ -841,6 +852,11 @@ extern "C" void sz_archive_info(SZArchive *archive, SZArchiveInfo *info) {
     NCOM::CPropVariant solid;
     info->isSolid = archive->archive->GetArchiveProperty(kpidSolid, &solid) == S_OK
         && solid.vt == VT_BOOL && solid.boolVal != VARIANT_FALSE;
+}
+
+extern "C" const char *sz_archive_volume_name(SZArchive *archive, uint32_t index) {
+    if (!archive || index >= archive->otherVolumes.size()) return nullptr;
+    return archive->otherVolumes[index].c_str();
 }
 
 extern "C" uint32_t sz_item_count(SZArchive *archive) {

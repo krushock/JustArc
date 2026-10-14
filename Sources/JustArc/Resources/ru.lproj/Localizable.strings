@@ -195,7 +195,7 @@
 "Merging adds the archive’s files to the folder that is already there. Replacing moves it to the Trash first." = "Объединение добавит файлы из архива в существующую папку. Замена сначала переместит её в Корзину.";
 "Minimize" = "Убрать в Dock";
 "Modified" = "Изменён";
-"Move the archive to the Trash afterwards" = "Перемещать архив в Корзину после распаковки";
+"Move the archive to the Trash after extracting" = "Перемещать архив в Корзину после распаковки";
 "Name" = "Имя";
 "New Archive" = "Новый архив";
 "No" = "Нет";

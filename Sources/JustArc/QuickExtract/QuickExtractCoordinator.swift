@@ -137,8 +137,8 @@ final class QuickExtractCoordinator {
             if let passwordToRemember, passwordToRemember == password {
                 KeychainStore.save(password: passwordToRemember, for: archive)
             }
-            finishUp(archive: archive, plan: plan, outcome: outcome,
-                     skippedFiles: resolution.file == .skip)
+            finishUp(archive: archive, otherVolumes: listing.info.otherVolumes, plan: plan,
+                     outcome: outcome, skippedFiles: resolution.file == .skip)
         } catch let error as ArchiveError where error == .cancelled {
             panel.finish()
             if plan.createdWrapperFolder {
@@ -199,8 +199,8 @@ final class QuickExtractCoordinator {
         }
     }
 
-    private func finishUp(archive: URL, plan: ExtractionPlan, outcome: ExtractionOutcome,
-                          skippedFiles: Bool) {
+    private func finishUp(archive: URL, otherVolumes: [String], plan: ExtractionPlan,
+                          outcome: ExtractionOutcome, skippedFiles: Bool) {
         if outcome.extractedNothing, !outcome.skippedFolders.isEmpty {
             // Everything in the archive was skipped, so say so rather than silently
             // opening a folder that did not change.
@@ -214,8 +214,18 @@ final class QuickExtractCoordinator {
 
         // Only once everything in it has been extracted: with some folders skipped,
         // the archive still holds the only copy of what was in them.
+        // An archive in volumes goes as a whole: the rest of the set is no use
+        // without the first part.
         if Preferences.moveArchiveToTrash, outcome.skippedFolders.isEmpty, !skippedFiles {
-            try? FileManager.default.trashItem(at: archive, resultingItemURL: nil)
+            let folder = archive.deletingLastPathComponent()
+            for file in [archive] + otherVolumes.map({ folder.appendingPathComponent($0) }) {
+                do {
+                    try Self.trash(file)
+                } catch {
+                    // Never deleted outright instead: the setting promised the Trash.
+                    Diagnostics.log("\(file.lastPathComponent) was not moved to the Trash: \(error.localizedDescription)")
+                }
+            }
         }
         if Preferences.revealInFinder {
             // A wrapper folder is the thing to show; otherwise show what was produced.
@@ -227,6 +237,10 @@ final class QuickExtractCoordinator {
             NSWorkspace.shared.activateFileViewerSelecting(targets)
         }
     }
+
+    /// Moves a file to the Trash. Replaceable, so that the tests do not fill the
+    /// Trash of whoever runs them.
+    static var trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
 
     // MARK: - Helpers
 

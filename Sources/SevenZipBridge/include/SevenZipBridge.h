@@ -88,10 +88,16 @@ typedef struct SZArchiveInfo {
     bool headersEncrypted;
     /// NULL when the archive has no comment.
     const char *comment;
+    /// For an archive in several volumes, how many there are besides the one opened.
+    uint32_t otherVolumeCount;
 } SZArchiveInfo;
 
 /// Strings in `info` stay valid until the archive is closed.
 void sz_archive_info(SZArchive *archive, SZArchiveInfo *info);
+
+/// The file name of another volume of the archive, in the same folder as the one
+/// opened. NULL when `index` is out of range. Valid until the archive is closed.
+const char *sz_archive_volume_name(SZArchive *archive, uint32_t index);
 
 uint32_t sz_item_count(SZArchive *archive);
 
