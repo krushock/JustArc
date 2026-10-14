@@ -237,8 +237,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             openInBrowser: { [weak self] url in self?.openInBrowser(url) },
             stageIntoNewWindow: { [weak self] items in
                 guard let self else { return }
-                let controller = self.makeBrowserWindow(for: nil)
+                // An empty window already up, the one a fresh launch opens among
+                // them, takes the files rather than having a second appear beside it.
+                let controller = self.browserControllers.first(where: \.isPristine)
+                    ?? self.makeBrowserWindow(for: nil)
                 controller.add(items: items)
+                controller.window?.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
             })
         servicesProvider = provider

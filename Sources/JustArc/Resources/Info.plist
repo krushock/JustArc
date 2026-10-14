@@ -43,6 +43,10 @@
 	     kinds of file each one applies to. -->
 	<!-- The titles are translated in each .lproj's ServicesMenu.strings, keyed by the
 	     "default" title here. -->
+	<!-- An NSRequiredContext, even an empty one, is what makes macOS show a service
+	     without the user first turning it on in System Settings; with only a few
+	     services for the selection, the Finder lists them in its right-click menu
+	     itself rather than under Services. -->
 	<key>NSServices</key>
 	<array>
 		<dict>
@@ -50,19 +54,24 @@
 			<dict>
 				<key>default</key><string>Compress with JustArc</string>
 			</dict>
-			<key>NSMessage</key><string>compressSelection</string>
+			<key>NSMessage</key><string>compressSelectionInWindow</string>
 			<key>NSPortName</key><string>JustArc</string>
 			<key>NSSendFileTypes</key>
 			<array>
 				<string>public.item</string>
 			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
 		</dict>
+		<!-- Off until turned on in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸
+		     Services, having no NSRequiredContext: it writes an archive at once, and
+		     the one above already puts compressing in the Finder's menu. -->
 		<dict>
 			<key>NSMenuItem</key>
 			<dict>
-				<key>default</key><string>Compress with JustArc (Choose Format)</string>
+				<key>default</key><string>Quick Compress with JustArc</string>
 			</dict>
-			<key>NSMessage</key><string>compressSelectionWithOptions</string>
+			<key>NSMessage</key><string>compressSelection</string>
 			<key>NSPortName</key><string>JustArc</string>
 			<key>NSSendFileTypes</key>
 			<array>
@@ -108,6 +117,8 @@
 				<string>com.justarc.arj</string>
 				<string>com.justarc.wim</string>
 			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
 		</dict>
 		<dict>
 			<key>NSMenuItem</key>
@@ -148,6 +159,8 @@
 				<string>com.justarc.arj</string>
 				<string>com.justarc.wim</string>
 			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
 		</dict>
 	</array>
 

@@ -2,6 +2,6 @@
    "default" titles under NSServices in Info.plist. */
 
 "Compress with JustArc" = "Compress with JustArc";
-"Compress with JustArc (Choose Format)" = "Compress with JustArc (Choose Format)";
+"Quick Compress with JustArc" = "Quick Compress with JustArc";
 "Extract with JustArc" = "Extract with JustArc";
 "Open Archive in JustArc" = "Open Archive in JustArc";

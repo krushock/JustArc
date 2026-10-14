@@ -28,6 +28,8 @@ final class ServicesProvider: NSObject {
 
     // MARK: - Service entry points
 
+    /// "Quick Compress with JustArc": an archive beside the selection, in the default
+    /// format, with nothing asked.
     @objc func compressSelection(_ pasteboard: NSPasteboard,
                                  userData: String?,
                                  error: AutoreleasingUnsafeMutablePointer<NSString>) {
@@ -43,9 +45,11 @@ final class ServicesProvider: NSObject {
         }
     }
 
-    @objc func compressSelectionWithOptions(_ pasteboard: NSPasteboard,
-                                            userData: String?,
-                                            error: AutoreleasingUnsafeMutablePointer<NSString>) {
+    /// "Compress with JustArc": a new archive window with the selection already in
+    /// it, where the format, password and the rest are chosen when it is saved.
+    @objc func compressSelectionInWindow(_ pasteboard: NSPasteboard,
+                                         userData: String?,
+                                         error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let items = Self.fileURLs(from: pasteboard)
         guard !items.isEmpty else {
             error.pointee = L("Select one or more files in the Finder first.") as NSString

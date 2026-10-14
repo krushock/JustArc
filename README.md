@@ -24,7 +24,7 @@ a window, or asks, as chosen in Settings ▸ Extracting. Whatever that setting s
 these always open the archive in a window, for when you want to look inside or edit:
 
 - dropping it on JustArc's Dock icon,
-- right-clicking it in the Finder and choosing Services ▸ Open Archive in JustArc,
+- right-clicking it in the Finder and choosing Open Archive in JustArc,
 - opening it while a JustArc window is already up, or dropping it on an empty one,
 - holding Option while opening it, which does the opposite of the setting.
 
@@ -159,8 +159,13 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
   left to the Finder's own preview. It is on as soon as JustArc has been opened once,
   and can be turned off in System Settings ▸ General ▸ Login Items & Extensions ▸
   Quick Look.
-- **Finder Services.** Compress, compress choosing a format, extract, and open, all from
-  the Finder's right-click Services menu. Extract and open are offered for archives only.
+- **The Finder's right-click menu.** Compress with JustArc opens a new archive window
+  with the selected files already in it, to be saved in whatever format and with
+  whatever password is chosen. Extract with JustArc and Open Archive in JustArc are
+  offered for archives. The Finder lists these at the foot of the menu, or under
+  Services when many apps add entries there. Quick Compress with JustArc, which writes
+  an archive in the default format at once, is off until turned on in System Settings
+  ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services.
 - **Zip encryption.** The Save panel offers AES-256 or the older ZipCrypto, which is weak
   but opens in tools that never learned AES, Archive Utility among them.
 - **Edited files go back in.** Open a file out of an archive, edit it in another app, and
