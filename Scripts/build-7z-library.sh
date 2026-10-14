@@ -1,13 +1,13 @@
 #!/bin/bash
 # Builds 7z.so, 7-Zip's format library, from the source vendored in
-# Sources/SevenZipBridge/7zip, as a universal binary at Vendor/7z.so.
+# Packages/SevenZipBridge/Sources/SevenZipBridge/7zip, as a universal binary at Vendor/7z.so.
 #
 # The bridge target compiles 7-Zip's client-side files itself; this builds the other
 # half, the format handlers and codecs, which the app loads at run time.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE="$ROOT/Sources/SevenZipBridge/7zip"
+SOURCE="$ROOT/Packages/SevenZipBridge/Sources/SevenZipBridge/7zip"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 

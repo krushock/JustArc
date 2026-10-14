@@ -80,6 +80,14 @@ cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Frameworks"
 cp "$ROOT/Vendor/7z.so" "$APP/Contents/Frameworks/7z.so"
 cp "$ROOT/Vendor/7zz-License.txt" "$APP/Contents/Resources/7-Zip-License.txt"
+# The bridge to 7-Zip, with the 7-Zip sources it is compiled from, is a library of
+# its own, so that JustArc's executables contain nothing of 7-Zip's: see
+# Packages/SevenZipBridge. The executables find it through this rpath.
+cp "$BIN/libSevenZipBridge.dylib" "$APP/Contents/Frameworks/libSevenZipBridge.dylib"
+drop_build_rpaths "$APP/Contents/Frameworks/libSevenZipBridge.dylib"
+if ! otool -l "$APP/Contents/MacOS/JustArc" | grep -q "@executable_path/../Frameworks"; then
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/JustArc"
+fi
 cp "$ROOT/Sources/JustArc/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # Localizations. Each .lproj folder is copied as-is next to the other resources.
@@ -140,9 +148,11 @@ fi
 APPEX="$APP/Contents/PlugIns/JustArcQuickLook.appex"
 mkdir -p "$APPEX/Contents/MacOS" "$APPEX/Contents/Resources" "$APPEX/Contents/Frameworks"
 cp "$ROOT/Vendor/7z.so" "$APPEX/Contents/Frameworks/7z.so"
+cp "$APP/Contents/Frameworks/libSevenZipBridge.dylib" "$APPEX/Contents/Frameworks/libSevenZipBridge.dylib"
 cp "$BIN/JustArcQuickLook" "$APPEX/Contents/MacOS/JustArcQuickLook"
 stamp_sdk "$APPEX/Contents/MacOS/JustArcQuickLook"
 drop_build_rpaths "$APPEX/Contents/MacOS/JustArcQuickLook"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APPEX/Contents/MacOS/JustArcQuickLook"
 cp "$ROOT/Sources/JustArcQuickLook/Resources/Info.plist" "$APPEX/Contents/Info.plist"
 # An extension whose version differs from its app's is one macOS may decline to load.
 for key in CFBundleShortVersionString CFBundleVersion; do
@@ -165,10 +175,12 @@ done
 # extension again without its entitlements, and an extension that is not sandboxed
 # is never loaded.
 codesign --force --sign - --timestamp=none "$APP/Contents/Frameworks/7z.so"
+codesign --force --sign - --timestamp=none "$APP/Contents/Frameworks/libSevenZipBridge.dylib"
 if [ "$APP_STORE" = 0 ]; then
   codesign --force --deep --sign - --timestamp=none "$APP/Contents/Frameworks/Sparkle.framework"
 fi
 codesign --force --sign - --timestamp=none "$APPEX/Contents/Frameworks/7z.so"
+codesign --force --sign - --timestamp=none "$APPEX/Contents/Frameworks/libSevenZipBridge.dylib"
 codesign --force --sign - --timestamp=none \
   --entitlements "$ROOT/Sources/JustArcQuickLook/Resources/JustArcQuickLook.entitlements" "$APPEX"
 if [ "$APP_STORE" = 1 ]; then

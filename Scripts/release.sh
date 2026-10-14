@@ -65,9 +65,12 @@ if [ -d "$SPARKLE_FW" ]; then
 fi
 
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APP/Contents/Frameworks/7z.so"
+codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APP/Contents/Frameworks/libSevenZipBridge.dylib"
 # The extension is sandboxed, which is what its entitlements say; without them it
-# is not loaded. It has a copy of 7z.so of its own, signed first.
+# is not loaded. It has copies of 7z.so and of the bridge library of its own,
+# signed first.
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APPEX/Contents/Frameworks/7z.so"
+codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} "$APPEX/Contents/Frameworks/libSevenZipBridge.dylib"
 codesign --force --sign "$IDENTITY" ${HARDENED[@]+"${HARDENED[@]}"} \
   --entitlements "$ROOT/Sources/JustArcQuickLook/Resources/JustArcQuickLook.entitlements" \
   "$APPEX"

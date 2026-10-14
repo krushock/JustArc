@@ -132,8 +132,10 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
   `Contents/PlugIns/JustArcQuickLook.appex`, sandboxed, with its own copy of `7z.so`.
 - `Tests/JustArcAppTests` — drives the app's real views: files dropped on each part of
   the window, files and folders dragged out, and the Settings panes.
-- `Sources/SevenZipBridge` — a small C bridge over 7-Zip's format library, plus the
-  vendored 7-Zip 25.01 source it compiles against. Archives are read and written in
+- `Packages/SevenZipBridge` — a small C bridge over 7-Zip's format library, plus the
+  vendored 7-Zip 25.01 source it compiles against, built as a dynamic library of its
+  own so that none of 7-Zip's LGPL code is compiled into JustArc's executables; its
+  LICENSE.md says how the library can be replaced. Archives are read and written in
   process; nothing runs as a subprocess, so passwords never appear in a command line.
 - `Vendor/7z.so` — 7-Zip's format library, universal, under the GNU LGPL, copied into
   `Contents/Frameworks`. Rebuild it from the vendored source with

@@ -75,7 +75,7 @@ JustArc.xcodeproj
 │  │                       Quick Look, drag & drop (in/out), toolbar
 │  ├─ Save/                SaveAs accessory (format, level, password, encrypt names, split volumes, exclude .DS_Store/._*)
 │  └─ Services/            Finder Services & Quick Actions: "Compress", "Extract Here", "Extract To…"
-├─ Frameworks/             7z.so (universal, LGPL, built from vendored source), signed with the app
+├─ Frameworks/             7z.so and libSevenZipBridge.dylib (universal, LGPL, built from vendored source), signed with the app
 └─ JustArcTests/           fixture archives generated at test time (7zz, zip, hdiutil)
 ```
 
