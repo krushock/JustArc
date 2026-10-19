@@ -84,6 +84,8 @@ cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Frameworks"
 cp "$ROOT/Vendor/7z.so" "$APP/Contents/Frameworks/7z.so"
 cp "$ROOT/Vendor/7zz-License.txt" "$APP/Contents/Resources/7-Zip-License.txt"
+# JustArc's own licence, which Help ▸ Acknowledgements opens with the others.
+cp "$ROOT/LICENSE" "$APP/Contents/Resources/License.txt"
 # The bridge to 7-Zip, with the 7-Zip sources it is compiled from, is a library of
 # its own, so that JustArc's executables contain nothing of 7-Zip's: see
 # Packages/SevenZipBridge. The executables find it through this rpath.
@@ -119,7 +121,7 @@ with open(path, 'rb') as f:
     info = plistlib.load(f)
 for key in [k for k in info if k.startswith('SU')]:
     del info[key]
-info['NSHumanReadableCopyright'] = 'Compression by 7-Zip, used under the GNU LGPL.'
+info['NSHumanReadableCopyright'] = 'Copyright © 2026 KruShock. Free software under the GNU GPL v3 or later. Compression by 7-Zip, under the GNU LGPL.'
 disk_images = {'public.disk-image', 'com.apple.disk-image-udif'}
 for group in info.get('CFBundleDocumentTypes', []) + info.get('NSServices', []):
     for key in ('LSItemContentTypes', 'NSSendFileTypes'):

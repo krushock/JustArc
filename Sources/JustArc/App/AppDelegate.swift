@@ -356,7 +356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The licences of what JustArc is built on, as they were shipped with it.
     @objc func showAcknowledgements(_ sender: Any?) {
-        let files = ["7-Zip-License.txt", "Sparkle-License.txt"].compactMap {
+        let files = ["License.txt", "7-Zip-License.txt", "Sparkle-License.txt"].compactMap {
             Bundle.main.url(forResource: ($0 as NSString).deletingPathExtension, withExtension: "txt")
         }
         guard !files.isEmpty else { return }
@@ -388,8 +388,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // The standard panel already knows the app's name, icon and version; only the
         // credits are ours to supply.
         let text = Distribution.updatesItself
-            ? L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.", SevenZipVersion.short)
-            : L("A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licence in full.", SevenZipVersion.short)
+            ? L("A fast archiver for macOS. Free software under the GNU GPL, version 3 or later, with no warranty.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.", SevenZipVersion.short)
+            : L("A fast archiver for macOS. Free software under the GNU GPL, version 3 or later, with no warranty.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licences in full.", SevenZipVersion.short)
         let credits = NSAttributedString(
             string: text,
             attributes: [

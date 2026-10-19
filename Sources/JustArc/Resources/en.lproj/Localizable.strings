@@ -44,8 +44,8 @@
 "4480 MB (DVD)" = "4480 MB (DVD)";
 "7-Zip cannot write this format." = "7-Zip cannot write this format.";
 "700 MB (CD)" = "700 MB (CD)";
-"A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licence in full." = "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licence in full.";
-"A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full." = "A fast archiver for macOS.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.";
+"A fast archiver for macOS. Free software under the GNU GPL, version 3 or later, with no warranty.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licences in full." = "A fast archiver for macOS. Free software under the GNU GPL, version 3 or later, with no warranty.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Help ▸ Acknowledgements has the licences in full.";
+"A fast archiver for macOS. Free software under the GNU GPL, version 3 or later, with no warranty.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full." = "A fast archiver for macOS. Free software under the GNU GPL, version 3 or later, with no warranty.\n\nCompression is powered by 7-Zip %@, used under the GNU LGPL. Updates are delivered by Sparkle, under the MIT licence. Disk images use the system hdiutil tool. Help ▸ Acknowledgements has the licences in full.";
 "A folder named “%@” already exists in “%@”." = "A folder named “%@” already exists in “%@”.";
 "A name cannot contain a slash." = "A name cannot contain a slash.";
 "AES-256 (strong)" = "AES-256 (strong)";

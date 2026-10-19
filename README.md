@@ -351,3 +351,26 @@ shows the same under Help ▸ Privacy.
   the screen.
 - macOS 27 deprecates `hdiutil` in favour of `diskutil image`. It still works and is
   the only option on older systems, so the migration is deferred.
+
+## Licence
+
+JustArc is free software: you can redistribute it and modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation, version
+3 or, at your option, any later version. It comes with no warranty. The full terms
+are in [LICENSE](LICENSE).
+
+Copyright © 2026 KruShock.
+
+As an additional permission under section 7 of the GPL, JustArc may be combined with
+7-Zip's libraries, `7z.so` and `libSevenZipBridge.dylib`, and the combination
+distributed, although part of 7-Zip's code carries the unRAR licence restriction,
+which the GPL does not allow on its own.
+
+What JustArc is built on keeps its own licence:
+
+- **7-Zip** by Igor Pavlov, and the bridge JustArc compiles with it into one library,
+  under the GNU LGPL 2.1 or later with the unRAR restriction; see
+  [Packages/SevenZipBridge/LICENSE.md](Packages/SevenZipBridge/LICENSE.md).
+- **Sparkle**, the updater in the website edition, under the MIT licence.
+
+Contributions are welcome; [CONTRIBUTING.md](CONTRIBUTING.md) says on what terms.

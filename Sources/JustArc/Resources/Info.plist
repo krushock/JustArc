@@ -23,7 +23,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Compression by 7-Zip, used under the GNU LGPL. Updates by Sparkle, under the MIT licence.</string>
+	<string>Copyright © 2026 KruShock. Free software under the GNU GPL v3 or later. Compression by 7-Zip, under the GNU LGPL; updates by Sparkle, under the MIT licence.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
