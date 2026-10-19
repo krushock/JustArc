@@ -117,6 +117,9 @@
 				<string>com.justarc.lzh</string>
 				<string>com.justarc.arj</string>
 				<string>com.justarc.wim</string>
+				<string>com.justarc.lzma</string>
+				<string>com.justarc.tar-z</string>
+				<string>com.justarc.cbt</string>
 			</array>
 			<key>NSRequiredContext</key>
 			<dict/>
@@ -159,6 +162,9 @@
 				<string>com.justarc.lzh</string>
 				<string>com.justarc.arj</string>
 				<string>com.justarc.wim</string>
+				<string>com.justarc.lzma</string>
+				<string>com.justarc.tar-z</string>
+				<string>com.justarc.cbt</string>
 			</array>
 			<key>NSRequiredContext</key>
 			<dict/>
@@ -193,11 +199,6 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Archive</string>
-			<!-- Archives JustArc opens show JustArc's document icon, a page with the
-			     app icon on it, drawn by Scripts/make-document-icon.swift. macOS does
-			     not generate one from the app icon for the system's own archive types. -->
-			<key>CFBundleTypeIconFile</key>
-			<string>ArchiveDocument</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -231,6 +232,9 @@
 				<string>com.justarc.lzh</string>
 				<string>com.justarc.arj</string>
 				<string>com.justarc.wim</string>
+				<string>com.justarc.lzma</string>
+				<string>com.justarc.tar-z</string>
+				<string>com.justarc.cbt</string>
 			</array>
 		</dict>
 		<!-- The same archives by extension. Type identifiers for the less common formats
@@ -239,11 +243,10 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Archive</string>
-			<!-- Archives JustArc opens show JustArc's document icon, a page with the
-			     app icon on it, drawn by Scripts/make-document-icon.swift. macOS does
-			     not generate one from the app icon for the system's own archive types. -->
-			<key>CFBundleTypeIconFile</key>
-			<string>ArchiveDocument</string>
+			<!-- No icon of JustArc's own: archives keep the icon macOS draws for them,
+			     a page with a zip on it and the extension below. That needs each one to
+			     be a type macOS knows as an archive, which is what the declarations at
+			     the end of this file are for. -->
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -336,7 +339,39 @@
 			<key>UTTypeConformsTo</key>
 			<array><string>public.data</string><string>public.archive</string></array>
 			<key>UTTypeTagSpecification</key>
-			<dict><key>public.filename-extension</key><array><string>wim</string><string>swm</string></array></dict>
+			<dict><key>public.filename-extension</key><array><string>wim</string><string>swm</string><string>esd</string></array></dict>
+		</dict>
+		<!-- Without a declaration these were types of no kind at all, drawn as blank
+		     pages; declared as archives, they get the archive icon too. -->
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.justarc.lzma</string>
+			<key>UTTypeDescription</key>
+			<string>LZMA-compressed file</string>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string><string>public.archive</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>lzma</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.justarc.tar-z</string>
+			<key>UTTypeDescription</key>
+			<string>Compressed tar archive</string>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string><string>public.archive</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>taz</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.justarc.cbt</string>
+			<key>UTTypeDescription</key>
+			<string>Comic book tar archive</string>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string><string>public.archive</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>cbt</string></array></dict>
 		</dict>
 	</array>
 </dict>

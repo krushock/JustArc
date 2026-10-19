@@ -93,7 +93,6 @@ if ! otool -l "$APP/Contents/MacOS/JustArc" | grep -q "@executable_path/../Frame
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/JustArc"
 fi
 cp "$ROOT/Sources/JustArc/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-cp "$ROOT/Sources/JustArc/Resources/ArchiveDocument.icns" "$APP/Contents/Resources/ArchiveDocument.icns"
 
 # Localizations. Each .lproj folder is copied as-is next to the other resources.
 for lproj in "$ROOT/Sources/JustArc/Resources/"*.lproj; do

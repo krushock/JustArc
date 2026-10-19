@@ -66,6 +66,9 @@
 				<string>com.justarc.lzh</string>
 				<string>com.justarc.arj</string>
 				<string>com.justarc.wim</string>
+				<string>com.justarc.lzma</string>
+				<string>com.justarc.tar-z</string>
+				<string>com.justarc.cbt</string>
 			</array>
 		</dict>
 	</dict>

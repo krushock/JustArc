@@ -307,10 +307,11 @@ shows the same under Help ▸ Privacy.
 - A file name that is not valid UTF-8 is decoded with the DOS code page that goes with
   the Mac's language (866 for Russian, 932 for Japanese, 437 otherwise), which is a
   guess. View ▸ Filename Encoding sets it for the archive in the window.
-- macOS caches document icons and keeps an archive's old icon, the system's or
-  another archiver's, after JustArc becomes its default app. JustArc's own icon shows
-  at once for types that were never cached; for the rest, the cache is cleared with
-  `sudo rm -rf /Library/Caches/com.apple.iconservices.store` and a restart.
+- Archives keep the icon macOS draws for them; JustArc has no document icon of its
+  own. macOS caches icons, though, and an archive whose default app used to be
+  another archiver can go on showing that one's icon until the cache is cleared with
+  `sudo rm -rf /Library/Caches/com.apple.iconservices.store` and the Dock and Finder
+  are restarted.
 - Extended attributes and resource forks that macOS stores in `__MACOSX` and `._` files
   are skipped on extraction rather than applied to the extracted files.
 - The RAR tools are checked against a SHA-256 before they are unpacked: one built
