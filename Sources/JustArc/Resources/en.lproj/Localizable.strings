@@ -171,7 +171,6 @@
 "Hide JustArc" = "Hide JustArc";
 "Hide Others" = "Hide Others";
 "Hide Sidebar" = "Hide Sidebar";
-"Hold Option while opening to do the other. Dropping an archive on JustArc's Dock icon, or right-clicking it in the Finder and choosing Open Archive in JustArc, always opens it in a window." = "Hold Option while opening to do the other. Dropping an archive on JustArc's Dock icon, or right-clicking it in the Finder and choosing Open Archive in JustArc, always opens it in a window.";
 "ISO Image" = "ISO Image";
 "If a file exists:" = "If a file exists:";
 "If a folder exists:" = "If a folder exists:";
@@ -236,6 +235,7 @@
 "Open" = "Open";
 "Open Recent" = "Open Recent";
 "Open Selected File" = "Open Selected File";
+"Opening from the Dock, a Downloads stack included, follows this too. Hold Option while opening to do the other. Right-clicking an archive in the Finder and choosing Open Archive in JustArc always opens it in a window." = "Opening from the Dock, a Downloads stack included, follows this too. Hold Option while opening to do the other. Right-clicking an archive in the Finder and choosing Open Archive in JustArc always opens it in a window.";
 "Opens With" = "Opens With";
 "Opens and extracts:" = "Opens and extracts:";
 "Opens it in a window" = "Opens it in a window";

@@ -193,6 +193,11 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Archive</string>
+			<!-- Archives JustArc opens show JustArc's document icon, a page with the
+			     app icon on it, drawn by Scripts/make-document-icon.swift. macOS does
+			     not generate one from the app icon for the system's own archive types. -->
+			<key>CFBundleTypeIconFile</key>
+			<string>ArchiveDocument</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -234,6 +239,11 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Archive</string>
+			<!-- Archives JustArc opens show JustArc's document icon, a page with the
+			     app icon on it, drawn by Scripts/make-document-icon.swift. macOS does
+			     not generate one from the app icon for the system's own archive types. -->
+			<key>CFBundleTypeIconFile</key>
+			<string>ArchiveDocument</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>

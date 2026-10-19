@@ -14,9 +14,11 @@ final class OpenRoutingTests: XCTestCase {
         XCTAssertEqual(action(.ask), .ask)
     }
 
-    func testDroppingOnTheDockIconAlwaysOpensAWindow() {
+    /// The Dock sends one request for a drop on JustArc's icon and for a click in its
+    /// Downloads stack, and the click is an ordinary open, so both follow the setting.
+    func testOpeningFromTheDockFollowsTheSetting() {
         for setting in ArchiveOpenAction.allCases {
-            XCTAssertEqual(action(setting, from: .dock), .browse, "\(setting)")
+            XCTAssertEqual(action(setting, from: .dock), setting, "\(setting)")
         }
     }
 
@@ -30,7 +32,7 @@ final class OpenRoutingTests: XCTestCase {
         XCTAssertEqual(action(.extract, option: true), .browse)
         XCTAssertEqual(action(.browse, option: true), .extract)
         XCTAssertEqual(action(.ask, option: true), .browse, "Option answers the question")
-        XCTAssertEqual(action(.extract, from: .dock, option: true), .extract)
+        XCTAssertEqual(action(.extract, from: .dock, option: true), .browse)
     }
 
     func testOtherSourcesBehaveLikeADoubleClick() {

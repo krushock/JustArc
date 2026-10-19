@@ -171,7 +171,6 @@
 "Hide JustArc" = "Скрыть JustArc";
 "Hide Others" = "Скрыть остальные";
 "Hide Sidebar" = "Скрыть боковое меню";
-"Hold Option while opening to do the other. Dropping an archive on JustArc's Dock icon, or right-clicking it in the Finder and choosing Open Archive in JustArc, always opens it in a window." = "Удерживайте Option при открытии, чтобы сделать наоборот. Если перетащить архив на значок JustArc в Dock или выбрать «Открыть архив в JustArc» в контекстном меню Finder, он всегда откроется в окне.";
 "ISO Image" = "Образ ISO";
 "If a file exists:" = "Если файл уже есть:";
 "If a folder exists:" = "Если папка уже есть:";
@@ -236,6 +235,7 @@
 "Open" = "Открыть";
 "Open Recent" = "Открыть недавние";
 "Open Selected File" = "Открыть выбранный файл";
+"Opening from the Dock, a Downloads stack included, follows this too. Hold Option while opening to do the other. Right-clicking an archive in the Finder and choosing Open Archive in JustArc always opens it in a window." = "Открытие из Dock, в том числе из стопки «Загрузки», тоже следует этой настройке. Удерживайте Option при открытии, чтобы сделать наоборот. Если щёлкнуть архив в Finder правой кнопкой и выбрать «Открыть архив в JustArc», он всегда откроется в окне.";
 "Opens With" = "Открывать в";
 "Opens and extracts:" = "Открывает и распаковывает:";
 "Opens it in a window" = "Открывает его в окне";

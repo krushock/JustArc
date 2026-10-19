@@ -75,6 +75,10 @@ drop_build_rpaths() {
   done
 }
 cp "$ROOT/Sources/JustArc/Resources/Info.plist" "$APP/Contents/Info.plist"
+# Every build gets a build number of its own. macOS keeps what it has learnt about
+# an app, its document icons among them, until the version changes, so a rebuild
+# under the same number can go on showing the old ones.
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%Y%m%d%H%M)" "$APP/Contents/Info.plist"
 # 7-Zip's format library, loaded in process. It is not a framework, but Frameworks
 # is where the hardened runtime expects code the app loads.
 mkdir -p "$APP/Contents/Frameworks"
@@ -89,6 +93,7 @@ if ! otool -l "$APP/Contents/MacOS/JustArc" | grep -q "@executable_path/../Frame
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/JustArc"
 fi
 cp "$ROOT/Sources/JustArc/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/Sources/JustArc/Resources/ArchiveDocument.icns" "$APP/Contents/Resources/ArchiveDocument.icns"
 
 # Localizations. Each .lproj folder is copied as-is next to the other resources.
 for lproj in "$ROOT/Sources/JustArc/Resources/"*.lproj; do

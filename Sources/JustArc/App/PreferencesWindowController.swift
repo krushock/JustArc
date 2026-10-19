@@ -227,7 +227,7 @@ final class ExtractionSettingsViewController: SettingsPaneViewController {
 
         install(NSGridView(views: [
             [caption(L("Double-clicking an archive:")), openActionPopUp],
-            [NSGridCell.emptyContentView, note(L("Hold Option while opening to do the other. Dropping an archive on JustArc's Dock icon, or right-clicking it in the Finder and choosing Open Archive in JustArc, always opens it in a window."))],
+            [NSGridCell.emptyContentView, note(L("Opening from the Dock, a Downloads stack included, follows this too. Hold Option while opening to do the other. Right-clicking an archive in the Finder and choosing Open Archive in JustArc always opens it in a window."))],
             [caption(L("Extract to:")), destinationPopUp],
             [NSGridCell.emptyContentView, smartFolderBox],
             [NSGridCell.emptyContentView, revealBox],

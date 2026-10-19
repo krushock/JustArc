@@ -19,11 +19,13 @@ sidebar lists recently used archives. A bare launch opens an empty archive you c
 files into and then save; opening an archive while that window is still untouched
 opens it in its place rather than leaving an empty window behind.
 
-**Extract or open.** Double-clicking an archive in the Finder unpacks it, opens it in
-a window, or asks, as chosen in Settings ▸ Extracting. Whatever that setting says,
-these always open the archive in a window, for when you want to look inside or edit:
+**Extract or open.** Opening an archive, by double-clicking it in the Finder, from a
+Dock stack such as Downloads, or by dropping it on JustArc's Dock icon, unpacks it,
+opens it in a window, or asks, as chosen in Settings ▸ Extracting. (The Dock sends the
+same request for a drop on the icon as for a click in a stack, so the two cannot be
+treated differently.) Whatever that setting says, these always open the archive in a
+window, for when you want to look inside or edit:
 
-- dropping it on JustArc's Dock icon,
 - right-clicking it in the Finder and choosing Open Archive in JustArc,
 - opening it while a JustArc window is already up, or dropping it on an empty one,
 - holding Option while opening it, which does the opposite of the setting.
@@ -305,9 +307,10 @@ shows the same under Help ▸ Privacy.
 - A file name that is not valid UTF-8 is decoded with the DOS code page that goes with
   the Mac's language (866 for Russian, 932 for Japanese, 437 otherwise), which is a
   guess. View ▸ Filename Encoding sets it for the archive in the window.
-- Telling a drop on the Dock icon from a double-click relies on which process sent the
-  open request. That is confirmed for requests from the command line; the Dock itself
-  has not been tried, because nothing here can drive the pointer.
+- macOS caches document icons and keeps an archive's old icon, the system's or
+  another archiver's, after JustArc becomes its default app. JustArc's own icon shows
+  at once for types that were never cached; for the rest, the cache is cleared with
+  `sudo rm -rf /Library/Caches/com.apple.iconservices.store` and a restart.
 - Extended attributes and resource forks that macOS stores in `__MACOSX` and `._` files
   are skipped on extraction rather than applied to the extracted files.
 - The RAR tools are checked against a SHA-256 before they are unpacked: one built
