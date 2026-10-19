@@ -4,6 +4,33 @@ A fast archiver for macOS. Double-click an archive and it unpacks and gets out o
 the way; open the app and you get a WinRAR-style window for browsing, editing and
 building archives.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/window-dark.png">
+  <img alt="JustArc's window, showing the folders and files inside a zip archive with their sizes, packed sizes, kinds, dates and checksums" src="docs/screenshots/window-light.png">
+</picture>
+
+<p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/quicklook-dark.png">
+  <img alt="The Quick Look preview of a zip archive, listing what is inside it" src="docs/screenshots/quicklook-light.png" width="49%">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
+  <img alt="Settings, Extracting: what double-clicking an archive does, where it is extracted to, and what happens when files are already there" src="docs/screenshots/settings-light.png" width="49%">
+</picture>
+</p>
+
+## Download
+
+The latest build is on the [Releases](https://github.com/krushock/JustArc/releases)
+page: a disk image, and the same app in a zip. It runs on macOS 14 or later, on Apple
+silicon and Intel.
+
+These builds are not yet notarized by Apple, so the first time JustArc is opened
+macOS says it cannot check it. Open it once from System Settings ▸ Privacy &
+Security, where an Open Anyway button appears after the first try, and it opens
+normally from then on.
+
 ## What works today
 
 **Quick Extract (double-click an archive)**
@@ -179,6 +206,15 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
   CP866, Shift JIS and the rest.
 - **English and Russian.** The interface follows the system language.
 - **Settings** is a standard tabbed settings window, and About is the system panel.
+
+## Screenshots
+
+The pictures above are drawn from the app's own windows, offscreen, in the light
+appearance and the dark one:
+
+```bash
+JUSTARC_SCREENSHOTS=docs/screenshots swift test --filter ScreenshotTests
+```
 
 ## Debugging
 
